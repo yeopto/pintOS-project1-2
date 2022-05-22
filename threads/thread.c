@@ -124,16 +124,19 @@ thread_init (void) {
 	initial_thread->tid = allocate_tid ();
 }
 
-/* Starts preemptive thread scheduling by enabling interrupts.
-   Also creates the idle thread. */
+/* idle 스레드를 만들고, preemptive thread scheduling을 시작한다. */
 void
 thread_start (void) {
 	/* Create the idle thread. */
 	struct semaphore idle_started;
 	sema_init (&idle_started, 0);
-	thread_create ("idle", PRI_MIN, idle, &idle_started);
+	// idle 스레드를 만들고 맨 처음 ready queue에 들어간다.
+	// semaphore를 1로 UP 시켜 공유 자원의 접근을 가능하게 한 다음 바로 BLOCK 된다.
+	thread_create ("idle", PRI_MIN, idle, &idle_started); 
 
 	/* Start preemptive thread scheduling. */
+	// thread_create(idle)에서 disable 했던 인터럽트 상태를 enable로 만듬 -> create 안에 unblock에 disable이 있음
+	// 이제 스케쥴링이 가능함 인터럽트가 가능해서
 	intr_enable ();
 
 	/* Wait for the idle thread to initialize idle_thread. */
@@ -363,7 +366,7 @@ thread_get_recent_cpu (void) {
    blocks.  After that, the idle thread never appears in the
    ready list.  It is returned by next_thread_to_run() as a
    special case when the ready list is empty. */
-static void
+static void // 어떤 스레드들도 실행되고 있지 않을 때 실행되는 스레드. 맨 처음 thread_start()가 호출될 때 ready queue에 먼저 들어가 있음
 idle (void *idle_started_ UNUSED) {
 	struct semaphore *idle_started = idle_started_;
 
@@ -607,8 +610,11 @@ void update_next_tick_to_awake(int64_t ticks){
 int64_t get_next_tick_to_awake(void) {
 	return next_tick_to_awake;
 }
-
-void thread_sleep(int64_t ticks){
+/* 
+	슬립 해줄 스레드를 sleep list에 추가하고 status를 blocked로 만들어준다
+	이 때 idle thread를 sleep시켜준다면 CPU가 실행 상태를 유지할 수 없어 종료 되므로 예외처리를 해주어야함
+*/
+void thread_sleep(int64_t ticks){ //
 	/* 현재 실행되고 있는 스레드에 대한 작업이므로. */
 	struct thread* cur = thread_current();
 
@@ -619,30 +625,32 @@ void thread_sleep(int64_t ticks){
 
 	ASSERT(cur != idle_thread);  // idle thread라면 종료.
 
-	cur->wakeup_tick = ticks;						// wakeup_tick 업데이트
+	cur->wakeup_tick = ticks;						// wakeup_tick 업데이트 -> 시각 언제 깨울건가?
 	update_next_tick_to_awake(cur->wakeup_tick); 	// next_tick_to_awake 업데이트(새로 들어온 것이 더 작은값인지 확인)
 	list_push_back (&sleep_list, &cur->elem);		// sleep_list에 끝에 추가
 
 	/* 스레드를 sleep 시킨다. */
-	thread_block();
+	thread_block(); // 블락 상태로 상태바꿔주고 schedule도 해준다. -> 스케쥴을 함수를 스케줄링 전체라 생각하지마!
 
 	/* 인터럽트 원복 */
 	intr_set_level(old_level);
 }
 
+// sleep list에 잠자고 있는 스레드를 깨운다. 즉 sleep list에서 제거한 후 ready list에 넣어줌 status 역시 바꿔줌
 void thread_awake(int64_t ticks){
-	struct list_elem* cur = list_begin(&sleep_list); //리스트의 처음 원소
+	struct list_elem* cur = list_begin(&sleep_list); // 리스트의 처음 원소
 	struct thread* t;
+
 
 	/* sleep list의 끝까지 순환한다. */
 	while(cur != list_end(&sleep_list)){ // list_end는 꼬리를 반환
 		t = list_entry(cur, struct thread, elem); // list 원소를 스레드 구조체의 주소로 바꿔주고 포인터로 정의된 t에 주소값을 넣어준다
 
 		if (ticks >= t->wakeup_tick){  // 깨울 시간이 지났다
-			cur = list_remove(&t->elem); // 스레드 구조체의 elem를 제거하고 cur에 넣어줌
+			cur = list_remove(&t->elem); // 스레드 구조체의 elem를 제거하고 다음걸 cur에 넣어줌
 			thread_unblock(t);           // status를 unblock상태로 바꿔준다.
 		}
-		else{  // 아직 안 깨워도 된다 : 다음 쓰레드로 넘어간다.
+		else {  // 아직 안 깨워도 된다 : 다음 쓰레드로 넘어간다.
 			cur = list_next(cur);
 			update_next_tick_to_awake(t->wakeup_tick);  // next_tick이 바뀌었을 수 있으므로 업데이트해준다.
 		}

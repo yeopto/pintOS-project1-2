@@ -91,9 +91,9 @@ struct thread {
 	enum thread_status status;          /* Thread state. */
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
-
-	/* wakeup tick : 깨어나야 할 tick(시각) */
-	int64_t wakeup_tick;
+	
+	/* 현재 20tick이고 앞으로 80tick 후에 깨워야한다면, 20 + 80 = 100tick이라는 값을 저장해 줄 변수가 필요 */
+	int64_t wakeup_tick;				/* loop기반으로 wating을 하지않으면 각 스레드마다 언제 깨어날지에 대한 정보를 가지고 있어야함 */
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */

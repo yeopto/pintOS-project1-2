@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 /* Number of timer interrupts per second. */
-#define TIMER_FREQ 100
+#define TIMER_FREQ 100 // 1초당 tick이 100번 돈다는 의미 -> 1tick은 100분의 1초 (10ms)
 
 void timer_init (void);
 void timer_calibrate (void);
