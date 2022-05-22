@@ -40,6 +40,11 @@ static struct lock tid_lock;
 /* Thread destruction requests */
 static struct list destruction_req;
 
+/* sleep 상태의 스레드들을 저장하는 리스트 */
+static struct list sleep_list;
+/* ready list에서 맨 처음으로 awake할 스레드의 tick 값 */
+static int64_t next_tick_to_awake;
+
 /* Statistics. */
 static long long idle_ticks;    /* # of timer ticks spent idle. */
 static long long kernel_ticks;  /* # of timer ticks in kernel threads. */
@@ -109,6 +114,8 @@ thread_init (void) {
 	lock_init (&tid_lock);
 	list_init (&ready_list);
 	list_init (&destruction_req);
+	list_init (&sleep_list); // sleep 스레드들을 연결해놓은 리스트를 초기화한다.
+	next_tick_to_awake = INT64_MAX;
 
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread ();
@@ -136,11 +143,11 @@ thread_start (void) {
 /* Called by the timer interrupt handler at each timer tick.
    Thus, this function runs in an external interrupt context. */
 void
-thread_tick (void) {
-	struct thread *t = thread_current ();
+thread_tick (void) {	
+	struct thread *t = thread_current (); // thread 유효성 검사
 
 	/* Update statistics. */
-	if (t == idle_thread)
+	if (t == idle_thread)	
 		idle_ticks++;
 #ifdef USERPROG
 	else if (t->pml4 != NULL)
@@ -386,6 +393,7 @@ idle (void *idle_started_ UNUSED) {
 
 /* Function used as the basis for a kernel thread. */
 static void
+// 인자 - thread_func *function : kernel이 실행할 함수, void *aux : sync를 위한 semaphore 등
 kernel_thread (thread_func *function, void *aux) {
 	ASSERT (function != NULL);
 
@@ -587,4 +595,56 @@ allocate_tid (void) {
 	lock_release (&tid_lock);
 
 	return tid;
+}
+
+// 1) ticks = 자야할 시각(이 시각이 지나야 깨서도 running 상태로 갈 수 있음)
+// 2) next_tick_to_awake = 스레드들 중에서 자야할 최소 시각
+//    ex) 1,2,3 스레드 중에서 자야할 최소시각이 적은 스레드의 ticks값으로 갱신해준다
+void update_next_tick_to_awake(int64_t ticks){
+	next_tick_to_awake = (next_tick_to_awake>ticks) ? ticks : next_tick_to_awake;
+} 
+
+int64_t get_next_tick_to_awake(void) {
+	return next_tick_to_awake;
+}
+
+void thread_sleep(int64_t ticks){
+	/* 현재 실행되고 있는 스레드에 대한 작업이므로. */
+	struct thread* cur = thread_current();
+
+	/* 인터럽트 disable*/
+	enum intr_level old_level;
+	ASSERT(!intr_context());
+	old_level = intr_disable(); // 스레드를 list에 추가해주는 일은 인터럽트가 걸리면 안 된다.	
+
+	ASSERT(cur != idle_thread);  // idle thread라면 종료.
+
+	cur->wakeup_tick = ticks;						// wakeup_tick 업데이트
+	update_next_tick_to_awake(cur->wakeup_tick); 	// next_tick_to_awake 업데이트(새로 들어온 것이 더 작은값인지 확인)
+	list_push_back (&sleep_list, &cur->elem);		// sleep_list에 끝에 추가
+
+	/* 스레드를 sleep 시킨다. */
+	thread_block();
+
+	/* 인터럽트 원복 */
+	intr_set_level(old_level);
+}
+
+void thread_awake(int64_t ticks){
+	struct list_elem* cur = list_begin(&sleep_list); //리스트의 처음 원소
+	struct thread* t;
+
+	/* sleep list의 끝까지 순환한다. */
+	while(cur != list_end(&sleep_list)){ // list_end는 꼬리를 반환
+		t = list_entry(cur, struct thread, elem); // list 원소를 스레드 구조체의 주소로 바꿔주고 포인터로 정의된 t에 주소값을 넣어준다
+
+		if (ticks >= t->wakeup_tick){  // 깨울 시간이 지났다
+			cur = list_remove(&t->elem); // 스레드 구조체의 elem를 제거하고 cur에 넣어줌
+			thread_unblock(t);           // status를 unblock상태로 바꿔준다.
+		}
+		else{  // 아직 안 깨워도 된다 : 다음 쓰레드로 넘어간다.
+			cur = list_next(cur);
+			update_next_tick_to_awake(t->wakeup_tick);  // next_tick이 바뀌었을 수 있으므로 업데이트해준다.
+		}
+	}
 }

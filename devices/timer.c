@@ -87,14 +87,24 @@ timer_elapsed (int64_t then) {
 	return timer_ticks () - then;
 }
 
-/* Suspends execution for approximately TICKS timer ticks. */
-void
-timer_sleep (int64_t ticks) {
+// /* Suspends execution for approximately TICKS timer ticks. */
+// /* busy-wating */
+// void
+// timer_sleep (int64_t ticks) {
+// 	int64_t start = timer_ticks ();
+
+// 	ASSERT (intr_get_level () == INTR_ON);
+// 	while (timer_elapsed (start) < ticks)
+// 		thread_yield ();
+// } 
+
+// sleep/wakeup
+void timer_sleep (int64_t ticks) {
 	int64_t start = timer_ticks ();
 
 	ASSERT (intr_get_level () == INTR_ON);
-	while (timer_elapsed (start) < ticks)
-		thread_yield ();
+	
+	thread_sleep(start + ticks); // 현재 tick값 부터 시작할 것이므로, 그 값에 ticks값을 더해주면 자야할 시간을 인자로 넣어줄 수 있다.
 }
 
 /* Suspends execution for approximately MS milliseconds. */
@@ -121,11 +131,22 @@ timer_print_stats (void) {
 	printf ("Timer: %"PRId64" ticks\n", timer_ticks ());
 }
 
-/* Timer interrupt handler. */
-static void
-timer_interrupt (struct intr_frame *args UNUSED) {
+// /* Timer interrupt handler. */
+// static void
+// timer_interrupt (struct intr_frame *args UNUSED) {
+// 	ticks++;
+// 	thread_tick ();
+// }
+
+// sleep/wakeup 수정
+static void timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
 	thread_tick ();
+	// 1) 여기서 ticks는 interrupt 발생 시, 증가하는 tick이다.
+	// 2) get_next_tick_to_awake() 반환 값이 꺠워야될(이미 다 잔) 스레드 중 최소 tick이다. 
+	// 3) 현재 증가하는 tick이 이 값을 넘었을 때는 깨워야될 스레드가 최소 1개 이상이므로 그 때부터 thread_awake로 깨우면 된다. 계속 깨울 필요가 없다.
+	if (get_next_tick_to_awake() <= ticks) 
+		thread_awake(ticks);
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
