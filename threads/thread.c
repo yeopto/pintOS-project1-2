@@ -214,6 +214,16 @@ thread_create (const char *name, int priority,
 	/* Add to run queue. */
 	thread_unblock (t);
 
+	
+	// Thread unblock 후, 현재 실행중인 thread와 우선순위 비교 
+	// running_thread_priority < new_thread_priority
+	// priority = 새로 들어오는 스레드의 priority
+	// thread_get_priority = Running 상태의 스레드의 priority
+	if (priority > thread_get_priority()){
+		thread_yield();
+	}
+	
+
 	return tid;
 }
 
@@ -247,7 +257,9 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-	list_push_back (&ready_list, &t->elem);
+	// 우선순위 정렬되어 삽입되도록 수정
+	list_insert_ordered (&ready_list, &t->elem, cmp_priority, NULL);
+	// list_push_back (&ready_list, &t->elem);
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
 }
@@ -310,15 +322,51 @@ thread_yield (void) {
 
 	old_level = intr_disable ();
 	if (curr != idle_thread)
-		list_push_back (&ready_list, &curr->elem);
+		// 우선순위 정렬되어 삽입되도록 수정
+		list_insert_ordered (&ready_list, &curr->elem, cmp_priority, NULL);
+		// list_push_back (&ready_list, &curr->elem);
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
 }
+// cmp_priority()
+// 첫 번째 인자의 우선순위가 높으면 1을 반환, 두 번째 인자의 우선순위가 높으면 0을 반환
+bool
+cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED){
+	struct thread *A;
+	struct thread *B;
+
+	A = list_entry(a, struct thread, elem);
+	B = list_entry(b, struct thread, elem);
+
+	if (A->priority > B->priority){
+
+		return 1;
+	} 
+	return 0;
+
+}
+// test_max_priority()
+// 현재 수행 중인 스레드와 가장 높은 우선순위의 스레드의 우선순위를 비교하여 스케줄링
+void
+test_max_priority(void) {
+	struct thread *t;
+	struct list_elem* max = list_begin(&ready_list);
+
+	t = list_entry(max, struct thread, elem);
+
+	if (t->priority > thread_get_priority())
+		thread_yield();
+	
+	
+}
+
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
+// 현재 쓰레드의 우선 순위와 ready_list에서 가장 높은 우선 순위를 비교하여 스케쥴링 하는 함수 호출
 void
 thread_set_priority (int new_priority) {
 	thread_current ()->priority = new_priority;
+	test_max_priority();
 }
 
 /* Returns the current thread's priority. */
@@ -633,6 +681,8 @@ void thread_sleep(int64_t ticks){
 void thread_awake(int64_t ticks){
 	struct list_elem* cur = list_begin(&sleep_list); //리스트의 처음 원소
 	struct thread* t;
+	next_tick_to_awake = INT64_MAX; // 초기화를 해주기 위해서는 MAX값으로 초기값 설정해줘야한다.
+
 
 	/* sleep list의 끝까지 순환한다. */
 	while(cur != list_end(&sleep_list)){ // list_end는 꼬리를 반환
