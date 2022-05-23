@@ -67,6 +67,8 @@ static void init_thread (struct thread *, const char *name, int priority);
 static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
+bool cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+void test_max_priority(void);
 
 /* Returns true if T appears to point to a valid thread. */
 #define is_thread(t) ((t) != NULL && (t)->magic == THREAD_MAGIC)
@@ -110,7 +112,7 @@ thread_init (void) {
 	};
 	lgdt (&gdt_ds);
 
-	/* Init the globla thread context */
+	/* Init the globaㅣ thread context */
 	lock_init (&tid_lock);
 	list_init (&ready_list);
 	list_init (&destruction_req);
@@ -213,6 +215,9 @@ thread_create (const char *name, int priority,
 
 	/* Add to run queue. */
 	thread_unblock (t);
+	if (priority > thread_get_priority()){
+		thread_yield();
+	}
 
 	return tid;
 }
@@ -242,12 +247,16 @@ thread_block (void) {
 void
 thread_unblock (struct thread *t) {
 	enum intr_level old_level;
+	struct list_elem *cur;
+	struct thread *cur_t;
 
 	ASSERT (is_thread (t));
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-	list_push_back (&ready_list, &t->elem);
+	list_insert_ordered(&ready_list, &(t->elem), cmp_priority, NULL); /*list_insert_ordered에서 cmp_priority(&(t->elem), 보고있는요소, NULL)가 0이 아닌 값이 나오면 그 순간 그 앞에 &(t->elem)넣음*/
+	
+	// list_push_back (&ready_list, &t->elem);
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
 }
@@ -310,7 +319,8 @@ thread_yield (void) {
 
 	old_level = intr_disable ();
 	if (curr != idle_thread)
-		list_push_back (&ready_list, &curr->elem);
+	list_insert_ordered(&ready_list, &(curr->elem), cmp_priority, NULL);
+	// 	list_push_back (&ready_list, &curr->elem);
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
 }
@@ -319,6 +329,8 @@ thread_yield (void) {
 void
 thread_set_priority (int new_priority) {
 	thread_current ()->priority = new_priority;
+	test_max_priority();
+
 }
 
 /* Returns the current thread's priority. */
@@ -411,7 +423,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 	ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
 	ASSERT (name != NULL);
 
-	memset (t, 0, sizeof *t);
+	memset (t, 0, sizeof *t); //t가 가리키는 곳에 sizeof*t(???)만큼 0을 채워넣는다
 	t->status = THREAD_BLOCKED;
 	strlcpy (t->name, name, sizeof t->name);
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
@@ -630,16 +642,18 @@ void thread_sleep(int64_t ticks){
 	intr_set_level(old_level);
 }
 
-void thread_awake(int64_t ticks){
+void thread_awake(int64_t ticks){ //ticks: 지금 시점
 	struct list_elem* cur = list_begin(&sleep_list); //리스트의 처음 원소
 	struct thread* t;
+	next_tick_to_awake = INT64_MAX;
+
 
 	/* sleep list의 끝까지 순환한다. */
 	while(cur != list_end(&sleep_list)){ // list_end는 꼬리를 반환
 		t = list_entry(cur, struct thread, elem); // list 원소를 스레드 구조체의 주소로 바꿔주고 포인터로 정의된 t에 주소값을 넣어준다
 
 		if (ticks >= t->wakeup_tick){  // 깨울 시간이 지났다
-			cur = list_remove(&t->elem); // 스레드 구조체의 elem를 제거하고 cur에 넣어줌
+			cur = list_remove(&t->elem); // remove elem and return next in list
 			thread_unblock(t);           // status를 unblock상태로 바꿔준다.
 		}
 		else{  // 아직 안 깨워도 된다 : 다음 쓰레드로 넘어간다.
@@ -647,4 +661,28 @@ void thread_awake(int64_t ticks){
 			update_next_tick_to_awake(t->wakeup_tick);  // next_tick이 바뀌었을 수 있으므로 업데이트해준다.
 		}
 	}
+}
+
+/* ready_list에서 우선순위가 가장 높은 스레드와 현재 스레드의 우선 순위를 비교,
+현재 스레드의 우선순위가 더 작다면 thread_yield*/
+void test_max_priority(void){
+	struct thread *t;
+	struct list_elem *max = list_begin(&ready_list);
+	t = list_entry(max, struct thread, elem);
+
+	if (t->priority > thread_get_priority())
+		thread_yield();
+
+}
+
+/* 인자로 주어진 스레드들의 우선순위를 비교 */
+bool cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED){
+	int pri_a, pri_b;
+	pri_a = list_entry(a, struct thread, elem) -> priority;
+	pri_b = list_entry(b, struct thread, elem) -> priority;
+
+	if (pri_a > pri_b) return 1;
+	else return 0;
+	
+
 }
