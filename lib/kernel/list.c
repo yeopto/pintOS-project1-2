@@ -415,6 +415,8 @@ list_sort (struct list *list, list_less_func *less, void *aux) {
 /* Inserts ELEM in the proper position in LIST, which must be
    sorted according to LESS given auxiliary data AUX.
    Runs in O(n) average case in the number of elements in LIST. */
+
+// 우선 순위를 정렬하여 리스트에 삽입시켜주는 함수
 void
 list_insert_ordered (struct list *list, struct list_elem *elem,
 		list_less_func *less, void *aux) {
@@ -425,8 +427,8 @@ list_insert_ordered (struct list *list, struct list_elem *elem,
 	ASSERT (less != NULL);
 
 	for (e = list_begin (list); e != list_end (list); e = list_next (e))
-		if (less (elem, e, aux))
-			break;
+		if (less (elem, e, aux)) // less function의 인자로 elem, e, aux를 넣어준다.
+			break; // 멈춘다.
 	return list_insert (e, elem);
 }
 

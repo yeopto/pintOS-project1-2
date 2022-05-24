@@ -186,6 +186,8 @@ thread_print_stats (void) {
    The code provided sets the new thread's `priority' member to
    PRIORITY, but no actual priority scheduling is implemented.
    Priority scheduling is the goal of Problem 1-3. */
+
+// 스레드들의 우선순위에 따른 CPU 선점이 일어남
 tid_t
 thread_create (const char *name, int priority,
 		thread_func *function, void *aux) {
@@ -216,6 +218,9 @@ thread_create (const char *name, int priority,
 
 	/* Add to run queue. */
 	thread_unblock (t);
+
+	if (t->priority > thread_current()->priority) // 스레드를 맨 첨 만들고 unblock()시, 우선순위가 현재 CPU를 점유하고 있는 스레드보다 크다면 
+		thread_yield(); // 양보한다
 
 	return tid;
 }
@@ -250,7 +255,10 @@ thread_unblock (struct thread *t) {
 
 	old_level = intr_disable ();
 	ASSERT (t->status == THREAD_BLOCKED);
-	list_push_back (&ready_list, &t->elem);
+	/*-----priority-------*/
+	// list_push_back (&ready_list, &t->elem); // 깨우고 난 뒤 readylist의 맨 뒤 삽입
+	list_insert_ordered(&ready_list, &t->elem, cmp_priority, NULL); // 우선 순위대로 정렬되어 삽입
+	/*-----priority-------*/
 	t->status = THREAD_READY;
 	intr_set_level (old_level);
 }
@@ -313,7 +321,7 @@ thread_yield (void) {
 
 	old_level = intr_disable ();
 	if (curr != idle_thread)
-		list_push_back (&ready_list, &curr->elem);
+		list_insert_ordered(&ready_list, &curr->elem, &cmp_priority, NULL);
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
 }
@@ -322,6 +330,8 @@ thread_yield (void) {
 void
 thread_set_priority (int new_priority) {
 	thread_current ()->priority = new_priority;
+
+	test_max_priority(); // 원래는 바꿔주고 끝이었음 우선순위를 바꾸고 난뒤 더 높은 우선순위를 가진 스레드가 있으면 양보해야하니까 이 함수를 호출
 }
 
 /* Returns the current thread's priority. */
@@ -552,13 +562,13 @@ do_schedule(int status) {
 static void
 schedule (void) {
 	struct thread *curr = running_thread ();
-	struct thread *next = next_thread_to_run ();
+	struct thread *next = next_thread_to_run (); // CPU 주도권을 넘겨줄 다음 스레드
 
 	ASSERT (intr_get_level () == INTR_OFF);
 	ASSERT (curr->status != THREAD_RUNNING);
 	ASSERT (is_thread (next));
 	/* Mark us as running. */
-	next->status = THREAD_RUNNING;
+	next->status = THREAD_RUNNING; // 다음 스레드 상태 변경
 
 	/* Start new time slice. */
 	thread_ticks = 0;
@@ -583,7 +593,7 @@ schedule (void) {
 
 		/* Before switching the thread, we first save the information
 		 * of current running. */
-		thread_launch (next);
+		thread_launch (next); // 다음 스레드 실행
 	}
 }
 
@@ -654,5 +664,23 @@ void thread_awake(int64_t ticks){
 			cur = list_next(cur);
 			update_next_tick_to_awake(t->wakeup_tick);  // next_tick이 바뀌었을 수 있으므로 업데이트해준다.
 		}
+	}
+}
+
+// 인자로 넣어준 스레드 a가 b보다 우선순위가 높다면 true를, 낮다면 false
+bool cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
+	struct thread *thread_a = list_entry(a, struct thread, elem);
+	struct thread *thread_b = list_entry(b, struct thread, elem);
+	return (thread_a->priority > thread_b->priority);
+}
+
+void test_max_priority(void){
+	if (list_empty(&ready_list)) // 비어있으면 종료
+		return;
+
+	struct thread* max_priority = list_entry(list_front(&ready_list), struct thread, elem); // ready list 앞엔 정렬되어 들어가서 가장 높은우선순위 스레드가 있음
+
+	if (max_priority->priority > thread_current()->priority){ // 레디리스트 맨앞에 있는 스레드의 우선순위가 더크면
+		thread_yield(); // 현재 스레드는 양보해야한다.
 	}
 }
