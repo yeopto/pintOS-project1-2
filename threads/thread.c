@@ -249,6 +249,7 @@ thread_block (void) {
    be important: if the caller had disabled interrupts itself,
    it may expect that it can atomically unblock a thread and
    update other data. */
+// unblock = 1) 우선순위 순으로 ready list에 넣고 2) 상태를 ready로 바꿔줌
 void
 thread_unblock (struct thread *t) {
 	enum intr_level old_level;
@@ -349,6 +350,11 @@ cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNU
 // 현재 수행 중인 스레드와 가장 높은 우선순위의 스레드의 우선순위를 비교하여 스케줄링
 void
 test_max_priority(void) {
+	//예외처리
+	if(list_empty(&ready_list)){
+		return;
+	}
+
 	struct thread *t;
 	struct list_elem* max = list_begin(&ready_list);
 
