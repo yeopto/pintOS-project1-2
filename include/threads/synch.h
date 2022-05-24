@@ -11,9 +11,9 @@ struct semaphore {
 };
 
 void sema_init (struct semaphore *, unsigned value);
-void sema_down (struct semaphore *);
+void sema_down (struct semaphore *); // semaphore를 요청하고 획득했을 때 value를 1낮춤
 bool sema_try_down (struct semaphore *);
-void sema_up (struct semaphore *);
+void sema_up (struct semaphore *); // semaphroe를 반환하고 value를 1 높임
 void sema_self_test (void);
 
 /* Lock. */
@@ -34,9 +34,12 @@ struct condition {
 };
 
 void cond_init (struct condition *);
-void cond_wait (struct condition *, struct lock *);
-void cond_signal (struct condition *, struct lock *);
+void cond_wait (struct condition *, struct lock *); // condition variable을 통해 signal이 오는지 기다림
+void cond_signal (struct condition *, struct lock *); // condition variable에서 기다리는 가장 높은 우선순위의 스레드에 signal을 보냄
 void cond_broadcast (struct condition *, struct lock *);
+
+// semaphore_elem으로부터 각 semaphore_elem의 쓰레드 디스크립터 가져와서 첫 번째 인자의 우선순위가 두번째 보다 높으면 1을 반환 낮으면 0
+bool cmp_sem_priority(const struct list_elem *a, const struct list_elem *b, void *aux);
 
 /* Optimization barrier.
  *
