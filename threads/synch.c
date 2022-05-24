@@ -192,7 +192,17 @@ lock_acquire (struct lock *lock) {
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
 
+
+	if (&lock->semaphore ==0){ //지금 lock을 다른 스레드가 소유하고 있다면
+		thread_current()->wait_on_lock = &lock;
+		list_insert_ordered(&lock->holder->donors, &thread_current()-> d_elem, cmp_priority, NULL); //holder의 donors에 저장
+
+		if (thread_current()->priority > lock->holder->priority)
+			donate_priority();
+	}
+
 	sema_down (&lock->semaphore);
+	thread_current()->wait_on_lock = NULL;
 	lock->holder = thread_current ();
 }
 
@@ -227,6 +237,8 @@ lock_release (struct lock *lock) {
 	ASSERT (lock_held_by_current_thread (lock));
 
 	lock->holder = NULL;
+	remove_with_lock(lock);
+	refresh_priority();
 	sema_up (&lock->semaphore);
 }
 
@@ -344,4 +356,54 @@ cmp_sema_priority (const struct list_elem *a, const struct list_elem *b, void *a
 	/* or this is possible too
 	return cmp_priority((list_begin(waiters_a), list_begin(waiters_b), NULL);
 	*/
+}
+
+void donate_priority(void){
+	// thread_current()의 wait_on_lock의 holder의 -> donors를 훑자
+	// struct thread *t = thread_current();
+	
+	struct lock *lock = thread_current()->wait_on_lock;
+	for(int i = 0; i<8 ; i++) {
+		if (lock-> holder -> wait_on_lock != NULL);
+			break;		
+		int max_prio = list_entry(list_begin(&lock->holder->donors), struct thread, elem)->priority;
+		if (max_prio > lock->holder->priority){ //get highest from holder's donors, and if it is higher than current holder
+				
+				lock->holder->priority = max_prio; 
+
+			}
+		lock = lock->holder->wait_on_lock;
+	}
+	// (lock -> holder -> priority < lock -> holder -> donors)
+	// thread_current()의 wait_on_lock의 wait_on_lock의 wait_on_lockdml...를 훑자
+}
+
+void remove_with_lock(struct lock *lock){
+
+
+	// if (list_begin(&lock->holder->donors) >= thread_current() -> priority)
+	// struct list_elem *acquire = list_pop_front(&lock -> semaphore.waiters);
+	// lock -> holder = acquire;
+	struct list_elem *e;
+	for (e = list_begin (&lock->holder->donors); e != list_end (&lock->holder->donors); e = list_next (&lock->holder->donors)){
+		if (lock == list_entry(e, struct thread, d_elem)-> wait_on_lock){
+			list_remove(e);
+		}
+		// if (list_entry() == lock->holder->wait_on_lock)
+
+	}
+
+	return NULL;
+}
+
+void refresh_priority(void){
+	struct thread  *t = thread_current();
+	struct lock *lock = t->wait_on_lock;
+	int max_prio = list_entry(list_begin(&lock->holder->donors), struct thread, elem)->priority;
+	
+	t->priority = t->origin_priority;
+	if (t->priority < max_prio){
+		t->priority = max_prio;
+	}
+	return NULL;
 }
