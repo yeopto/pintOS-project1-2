@@ -688,3 +688,13 @@ bool cmp_priority(const struct list_elem *a, const struct list_elem *b, void *au
 	else return 0;
 	
 }
+
+bool cmp_donors_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED){
+	int donors_a, donors_b;
+	donors_a = list_entry(a, struct thread, d_elem) -> priority;
+	donors_b = list_entry(b, struct thread, d_elem) -> priority;
+
+	if (donors_a > donors_b) return 1;
+	else return 0;
+	
+}

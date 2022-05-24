@@ -194,13 +194,14 @@ lock_acquire (struct lock *lock) {
 
 	if(lock->holder != NULL){
 		thread_current()->wait_on_lock = lock;
-		list_insert_ordered(&lock->holder->donors, &thread_current()-> d_elem, cmp_priority, NULL);
+		list_insert_ordered(&lock->holder->donors, &thread_current()-> d_elem, cmp_donors_priority, NULL);
 		donate_priority();
 
 	}
 
 	sema_down (&lock->semaphore);
 	lock->holder = thread_current ();
+	thread_current()->wait_on_lock = NULL;
 
 	// if (&lock->semaphore ==0){ //지금 lock을 다른 스레드가 소유하고 있다면
 	// 	thread_current()->wait_on_lock = &lock;
