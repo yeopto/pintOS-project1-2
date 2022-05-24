@@ -684,5 +684,4 @@ bool cmp_priority(const struct list_elem *a, const struct list_elem *b, void *au
 	if (pri_a > pri_b) return 1;
 	else return 0;
 	
-
 }

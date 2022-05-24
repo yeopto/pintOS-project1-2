@@ -32,7 +32,7 @@ test_priority_sema (void)
 
   for (i = 0; i < 10; i++) 
     {
-      sema_up (&sema);
+      sema_up (&sema); //하자마자 sema_down에 막혀있던 애 실행
       msg ("Back in main thread."); 
     }
 }

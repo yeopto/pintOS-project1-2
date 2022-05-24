@@ -37,7 +37,7 @@ test_priority_condvar (void)
     {
       lock_acquire (&lock);
       msg ("Signaling...");
-      cond_signal (&condition, &lock);
+      cond_signal (&condition, &lock); //cond->wait의 제일 앞 애 sema를 up해줌
       lock_release (&lock);
     }
 }
@@ -46,8 +46,8 @@ static void
 priority_condvar_thread (void *aux UNUSED) 
 {
   msg ("Thread %s starting.", thread_name ());
-  lock_acquire (&lock);
-  cond_wait (&condition, &lock);
+  lock_acquire (&lock); //lock의 sema를 down(initialized as 1)
+  cond_wait (&condition, &lock); //이 안에서 sema_init, lock_release하고 sema_down(&waiter.semaphore);
   msg ("Thread %s woke up.", thread_name ());
   lock_release (&lock);
 }
