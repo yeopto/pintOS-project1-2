@@ -228,14 +228,16 @@ lock_acquire (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
+   
+   if(!thread_mlfqs){// mlfqs 스케줄러에서는 priority donation을 비활성화 시켜줘야함
 
-	if (lock->holder) { //지금 lock을 다른 스레드가 소유하고 있다면
-		thread_current()->wait_on_lock = lock;
-		list_insert_ordered(&lock->holder->donors, &thread_current()-> d_elem, cmp_donors_priority, NULL); //holder의 donors에 저장
-		// if (thread_current()->priority > lock->holder->priority)
-		donate_priority();
-	}
-
+	   if (lock->holder) { //지금 lock을 다른 스레드가 소유하고 있다면
+         thread_current()->wait_on_lock = lock;
+         list_insert_ordered(&lock->holder->donors, &thread_current()-> d_elem, cmp_donors_priority, NULL); //holder의 donors에 저장
+         // if (thread_current()->priority > lock->holder->priority)
+         donate_priority();
+      }
+   }
 	sema_down (&lock->semaphore);
 	lock->holder = thread_current ();
 	thread_current()->wait_on_lock = NULL;
@@ -282,9 +284,12 @@ void
 lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));// 현재 스레드가 lock을 유지하고 않으면 종료
-	
-	remove_with_lock(lock);
-	refresh_priority();
+   
+
+	if(!thread_mlfqs){ // mlfqs 스케줄러에서는 priority donation을 비활성화 시켜줘야함
+	   remove_with_lock(lock);
+	   refresh_priority();
+   }
 	lock->holder = NULL; // 현재 스레드의 상태를 NULL로 초기화
 	sema_up (&lock->semaphore); // sema_up을 통해 임계 영역에서 벗어남
 }
