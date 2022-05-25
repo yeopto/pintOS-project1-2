@@ -329,8 +329,9 @@ thread_yield (void) {
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
-	thread_current ()->priority = new_priority;
+	thread_current ()->init_priority = new_priority;
 
+	refresh_priority();
 	test_max_priority(); // 원래는 바꿔주고 끝이었음 우선순위를 바꾸고 난뒤 더 높은 우선순위를 가진 스레드가 있으면 양보해야하니까 이 함수를 호출
 }
 
@@ -430,6 +431,12 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
+
+	/*----priority donation----*/
+	t->init_priority = priority; // 스레드가 막 만들어졌으면, priority와 init_priority는 똑같이 인자 priority를 받음(원래 priority를 저장하기 위해)
+	t->wait_on_lock = NULL; // wait_on_lock 역시 처음에 아무것도 없다. (신생 스레드가 lock을 요구한다고 해도, 실제 요구하는 시점은 running_thread가 되어서 처음으로 요구함 그때 갱신됨)
+	list_init(&t->donations); // donations은 리스트형 구조이므로 리스트 초기화 함수를 사용함
+	/*----priority donation----*/
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
@@ -682,5 +689,51 @@ void test_max_priority(void){
 
 	if (max_priority->priority > thread_current()->priority){ // 레디리스트 맨앞에 있는 스레드의 우선순위가 더크면
 		thread_yield(); // 현재 스레드는 양보해야한다.
+	}
+}
+
+void donate_priority(){
+	/*39 우선순위인 스레드가 C를 원하는데 C의 holder은 B를 원하고 B의 holder는 A를 원하는 경우, 이렇게 원하는 lock의 holder가 다른 lock을 원한다면 
+	그 lock의 holder 까지 donation을 하는 것을 Nested Donation이라고 함 pintos는 nested depth를 8까지*/
+
+	int depth;
+	struct thread* curr = thread_current();
+
+	/* 최대 depth는 8이다. */
+	for (depth = 0; depth < 8; depth++){
+		if (!curr->wait_on_lock)   // 더 이상 nested가 없을 때.
+			break;
+		
+		struct thread* holder = curr->wait_on_lock->holder;
+		holder->priority = curr->priority;   // 우선 순위를 donation한다.
+		curr = holder;  //  그 다음 depth로 들어간다.
+	}
+}
+
+void remove_with_lock(struct lock* lock){
+	struct list_elem* e; // 기부자들 list 시작 점(락키 갖고 싶어서 도네이션 했음 그래서 도네이션 리스트에 있을거임)
+	struct thread* curr = thread_current(); // 현재 러닝중인 thread(A,B 락키 가지고 있는 상황)
+
+	for (e = list_begin(&curr->donations); e != list_end(&curr->donations); e = list_next(e)){
+		struct thread* t = list_entry(e, struct thread, donation_elem);
+		if (t->wait_on_lock == lock){ // 기부자가 기다리는 락이 인자로받은 락(지울 락)이랑 같으면
+			list_remove(&t->donation_elem); // 그 elem은 삭제 해줘
+		}
+	}
+}
+
+void refresh_priority(void) {
+	struct thread * curr = thread_current(); // lock_release()에서 remove_with_lock()로 락 해제해도 여전히 실행중인 스레드가 다른 락을 들고 있을 수 있으니 curr은 러닝중인 스레드로
+	curr->priority = curr->init_priority; // 현재 스레드의 우선순위를 기부받기 전의 우선순위로 변경
+
+	if (list_empty(&curr->donations) == false) { // 도네리스트 안비었으면
+		list_sort(&curr->donations, thread_compare_donate_priority, 0); // 도네리스트 우선순위 비교해서 정렬해줘
+		
+		struct thread *high;
+		high = list_entry(list_front(&curr->donations), struct thread, donation_elem); // 도네리스트에서 가장 우선순위 높은 elem
+		
+		if (high->priority > curr->priority) { // 러닝스레드 기부받기 전 우선순위보다 도네리스트에서 우선순위가 가장 높은애가 크면 -> 근데 당연해 왜냐면 도네리스트에 들어가는 전제 자체가 러닝 스레드 우선순위보다 높아야 들어가
+			curr->priority = high->priority; // 러닝스레드 우선순위를 도네리스트에서 우선순위가 가장큰애로(기부)
+		}
 	}
 }

@@ -115,7 +115,7 @@ sema_up (struct semaphore *sema) {
 
 	old_level = intr_disable ();
 	if (!list_empty (&sema->waiters)){
-      list_sort(&sema->waiters, cmp_priority, NULL);
+      list_sort(&sema->waiters, cmp_priority, 0);
       // watier list에 있는 thread의 우선 순위가 변경 되었을 경우를 고려하여 waiter list 정렬
 		thread_unblock (list_entry (list_pop_front (&sema->waiters),
 					struct thread, elem));
@@ -197,9 +197,20 @@ lock_acquire (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
+   /*----priority donation----*/
+   struct thread *t = thread_current();
 
-	sema_down (&lock->semaphore);
-	lock->holder = thread_current ();
+   if (lock->holder != NULL) {
+      t->wait_on_lock = lock; // 인자로 받은 락 스레드 주소를 저장
+      list_insert_ordered(&lock->holder->donations, &t->donation_elem, 
+		thread_compare_donate_priority, 0); // 락 스레드에 기부자인 현재스레드 이름을 새김
+      donate_priority(); // donate 함
+   }
+   /*----priority donation----*/
+	sema_down (&lock->semaphore); // 현재 스레드는 기존 lock 주인이 작업을 끝나기 전까지는 block상태로 들어가 sema_down에서 머뭄 lock주인이 작업 끝내고 반납하면  
+	// lock->holder = thread_current ();
+   t->wait_on_lock = NULL; // while문 빠져 나와서 현재 스레드의 원하는 락의 주소는 NULL이되 -> 락 받거든
+   lock->holder = t; // 락의 주인은 현재 스레드가 된다.
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -232,7 +243,10 @@ lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
 
-	lock->holder = NULL;
+   remove_with_lock(lock); // 도네이션에서 인자 lock 필요했던 기부자 삭제해줘야지(락 해제)
+   refresh_priority();  // 우선순위를 함 갱신해줘야해 (A,B) 가지고 있다가 A만 해제하면 B만 남거든? 그럼 우선순위를 또 갱신 함 해야지 -> B 기부자 리스트 중 가장 높은 priority 가져와야하니까
+
+	lock->holder = NULL; // 락 해제 해주니까 holder는 필요가 없으니 NULL
 	sema_up (&lock->semaphore);
 }
 
@@ -294,7 +308,7 @@ cond_wait (struct condition *cond, struct lock *lock) {
 	sema_init (&waiter.semaphore, 0); // sema 초기화, 초기값 0
 	// list_push_back (&cond->waiters, &waiter.elem); 
    	// cond 변수의 watiers list에 waiter의 elem값을 넣어준다.
-    list_insert_ordered(&cond->waiters, &waiter.elem, cmp_sem_priority, NULL);
+   list_insert_ordered(&cond->waiters, &waiter.elem, cmp_sem_priority, NULL);
 	lock_release (lock); // 슬립을 해야할 스레드는 락을 반납한다
 	sema_down (&waiter.semaphore); // sema_down을 하면서(s=0) while문에 갇혀있는다. 그 다음 스레드가 신호를 주면(sema_up)(s=1) while문 탈출하여 s=0으로 한 뒤 반환 
 	lock_acquire (lock); // 슬립에서 깨어난 스레드는 리턴하기 전에 락을 재획득한다.
@@ -345,4 +359,11 @@ cmp_sem_priority(const struct list_elem *a, const struct list_elem *b, void *aux
 	 struct thread *sema_B = list_entry(list_begin(waiter_b), struct thread, elem);
 
    return sema_A->priority > sema_B->priority;
+}
+
+bool thread_compare_donate_priority(const struct list_elem *a, const struct list_elem *b, void *aux){
+	struct thread* thread_a = list_entry(a, struct thread, donation_elem);
+	struct thread* thread_b = list_entry(b, struct thread, donation_elem);
+
+	return thread_a->priority > thread_b->priority;
 }
