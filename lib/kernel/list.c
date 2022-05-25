@@ -295,6 +295,7 @@ list_size (struct list *list) {
 bool
 list_empty (struct list *list) {
 	return list_begin (list) == list_end (list);
+	/*returns list->head.next == return list->tail*/
 }
 
 /* Swaps the `struct list_elem *'s that A and B point to. */

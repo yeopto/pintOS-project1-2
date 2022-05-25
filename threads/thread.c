@@ -68,6 +68,7 @@ static void do_schedule(int status);
 static void schedule (void);
 static tid_t allocate_tid (void);
 bool cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+bool cmp_donors_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 void test_max_priority(void);
 
 /* Returns true if T appears to point to a valid thread. */
@@ -325,6 +326,7 @@ thread_yield (void) {
 	intr_set_level (old_level);
 }
 
+
 /* Sets the current thread's priority to NEW_PRIORITY. */
 void
 thread_set_priority (int new_priority) {
@@ -431,7 +433,10 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
 
-	t->origin_priority = priority;//donation할 때 추가함
+	/*donations */
+	t->origin_priority = priority;
+	list_init(&t->donors);
+	t->wait_on_lock = NULL;
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
@@ -669,6 +674,8 @@ void thread_awake(int64_t ticks){ //ticks: 지금 시점
 /* ready_list에서 우선순위가 가장 높은 스레드와 현재 스레드의 우선 순위를 비교,
 현재 스레드의 우선순위가 더 작다면 thread_yield*/
 void test_max_priority(void){
+	if(list_empty(&ready_list)) return;
+	
 	struct thread *t;
 	struct list_elem *max = list_begin(&ready_list);
 	t = list_entry(max, struct thread, elem);
@@ -680,6 +687,7 @@ void test_max_priority(void){
 
 /* 인자로 주어진 스레드들의 우선순위를 비교 */
 bool cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED){
+	
 	int pri_a, pri_b;
 	pri_a = list_entry(a, struct thread, elem) -> priority;
 	pri_b = list_entry(b, struct thread, elem) -> priority;
@@ -697,4 +705,45 @@ bool cmp_donors_priority(const struct list_elem *a, const struct list_elem *b, v
 	if (donors_a > donors_b) return 1;
 	else return 0;
 	
+}
+
+void donate_priority(void){
+	// thread_current()의 wait_on_lock의 holder의 wol의 holder 훑으면서 t->priority 주기
+	struct thread *t = thread_current();
+	for(int i = 0; i<8 ; i++) {
+		if (t -> wait_on_lock == NULL) break;
+		t->wait_on_lock->holder -> priority = t -> priority; //내 앞의 애들에게 다 내 priority를 준다.
+		t = t-> wait_on_lock -> holder;
+	}
+}
+
+void remove_with_lock(struct lock *lock){ //lock 풀어주면서 그 lock에 해당하는 내 donors list 비우기
+
+	struct thread *t = thread_current();
+	struct list_elem *e;
+	//if (!list_empty(&t->donors) 확인 안해도 되나???
+	if(!list_empty(&t->donors)){
+		for (e = list_begin (&t->donors); e != list_end (&t->donors); e = list_next (e)){
+			t = list_entry(e, struct thread, d_elem); //계속 업데이트해줘야함...!
+			if (lock == t->wait_on_lock){ //그 donor가 기다리는 lock이 내가 지금 풀어주는 lock이면
+				list_remove(&t->d_elem); //내 donor에서 제거
+			}
+		/* 근데 이렇게 한번에 list_entry하고 -> priority까지 구하면 안되는겨...?*/
+		// if (lock == list_entry(e, struct thread, d_elem)-> wait_on_lock){
+		// 	list_remove(e);
+		
+	}
+	}
+
+}
+
+
+void refresh_priority(void){
+	struct thread  *t = thread_current();
+	t->priority = t->origin_priority;
+
+	if (!list_empty(&t->donors)){ //이거 확인해줘야 함
+		int max_prio = list_entry(list_begin(&t->donors), struct thread, d_elem)->priority;
+		if (t->priority < max_prio) t->priority = max_prio;
+	}
 }
