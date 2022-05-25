@@ -91,12 +91,17 @@ struct thread {
 	enum thread_status status;          /* Thread state. */
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
+	int origin_priority; //기부받기 전 priority
 
 	/* wakeup tick : 깨어나야 할 tick(시각) */
 	int64_t wakeup_tick;
 
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
+	struct lock *wait_on_lock; //이 스레드가 진입하고자하는 lock
+	struct list donors; //기부해준 스레드들의 리스트
+	struct list_elem d_elem; //to be used in donors list of other threads
+
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
@@ -151,3 +156,9 @@ void do_iret (struct intr_frame *tf);
 void test_max_priority(void);
 
 bool cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+
+void remove_with_lock(struct lock *lock);
+void refresh_priority(void);
+void donate_priority(void);
+bool cmp_donors_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+

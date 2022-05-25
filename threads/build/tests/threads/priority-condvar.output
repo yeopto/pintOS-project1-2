@@ -4,113 +4,20 @@ Kernel command line: -q run priority-condvar
 Pintos booting with: 
 	base_mem: 0x0 ~ 0x9fc00 (Usable: 639 kB)
 	ext_mem: 0x100000 ~ 0x13e0000 (Usable: 19,328 kB)
-Calibrating timer...  130,867,200 loops/s.
+Calibrating timer...  157,081,600 loops/s.
 Boot complete.
 Executing 'priority-condvar':
 (priority-condvar) begin
 (priority-condvar) Thread priority 23 starting.
 (priority-condvar) Thread priority 22 starting.
-a : 22, b : 23
-
-
 (priority-condvar) Thread priority 21 starting.
-a : 21, b : 23
-
-
-a : 21, b : 22
-
-
 (priority-condvar) Thread priority 30 starting.
-a : 30, b : 23
-
-
 (priority-condvar) Thread priority 29 starting.
-a : 29, b : 30
-
-
-a : 29, b : 23
-
-
 (priority-condvar) Thread priority 28 starting.
-a : 28, b : 30
-
-
-a : 28, b : 29
-
-
-a : 28, b : 23
-
-
 (priority-condvar) Thread priority 27 starting.
-a : 27, b : 30
-
-
-a : 27, b : 29
-
-
-a : 27, b : 28
-
-
-a : 27, b : 23
-
-
 (priority-condvar) Thread priority 26 starting.
-a : 26, b : 30
-
-
-a : 26, b : 29
-
-
-a : 26, b : 28
-
-
-a : 26, b : 27
-
-
-a : 26, b : 23
-
-
 (priority-condvar) Thread priority 25 starting.
-a : 25, b : 30
-
-
-a : 25, b : 29
-
-
-a : 25, b : 28
-
-
-a : 25, b : 27
-
-
-a : 25, b : 26
-
-
-a : 25, b : 23
-
-
 (priority-condvar) Thread priority 24 starting.
-a : 24, b : 30
-
-
-a : 24, b : 29
-
-
-a : 24, b : 28
-
-
-a : 24, b : 27
-
-
-a : 24, b : 26
-
-
-a : 24, b : 25
-
-
-a : 24, b : 23
-
-
 (priority-condvar) Signaling...
 (priority-condvar) Thread priority 30 woke up.
 (priority-condvar) Signaling...
@@ -133,8 +40,8 @@ a : 24, b : 23
 (priority-condvar) Thread priority 21 woke up.
 (priority-condvar) end
 Execution of 'priority-condvar' complete.
-Timer: 42 ticks
-Thread: 0 idle ticks, 42 kernel ticks, 0 user ticks
-Console: 2234 characters output
+Timer: 31 ticks
+Thread: 0 idle ticks, 31 kernel ticks, 0 user ticks
+Console: 1707 characters output
 Keyboard: 0 keys pressed
 Powering off...

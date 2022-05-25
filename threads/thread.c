@@ -371,8 +371,10 @@ test_max_priority(void) {
 // 현재 쓰레드의 우선 순위와 ready_list에서 가장 높은 우선 순위를 비교하여 스케쥴링 하는 함수 호출
 void
 thread_set_priority (int new_priority) {
-	thread_current ()->priority = new_priority;
+	thread_current ()->origin_priority = new_priority;
+	refresh_priority();
 	test_max_priority();
+
 }
 
 /* Returns the current thread's priority. */
@@ -471,6 +473,11 @@ init_thread (struct thread *t, const char *name, int priority) {
 	t->tf.rsp = (uint64_t) t + PGSIZE - sizeof (void *);
 	t->priority = priority;
 	t->magic = THREAD_MAGIC;
+	
+	/* donations */
+	t->origin_priority = priority;
+	list_init(&t->donors);
+	t->wait_on_lock = NULL;
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
@@ -703,4 +710,71 @@ void thread_awake(int64_t ticks){
 			update_next_tick_to_awake(t->wakeup_tick);  // next_tick이 바뀌었을 수 있으므로 업데이트해준다.
 		}
 	}
+}
+
+void donate_priority(void){
+	// thread_current()의 wait_on_lock의 holder의 -> donors를 훑자
+	// struct thread *t = thread_current();
+
+	/*
+	 현재 스레드가 기다리고 있는 lock과 연결된 모든 스레드들을 훑은다
+	 priority를 lock을 보유하고 있는 thread에게 기부
+	 nested(연결된, 연쇄적인) lock을 고려 -> 해당 lock과 관련있는 모든 thread들에게 기부
+	 하나의 스레드가 복수개의 lock을 획득해야하는 경우 lock acquire이 반복 실행 -> 이 함수도 반보길행
+	 nested depth = 8로 제한
+	*/
+	struct thread *t = thread_current();
+	for(int i = 0; i<8 ; i++) {
+		if (t->wait_on_lock == NULL){	//훑은 스레드가 원하는 lock이 없다면 중지
+			break;
+		}		
+		t->wait_on_lock->holder->priority = t->priority;
+		t = t->wait_on_lock->holder;
+	}
+}
+
+void refresh_priority(void){
+	struct thread  *t = thread_current();
+
+	t->priority = t->origin_priority;
+	if(!list_empty(&t->donors)) {
+		int max_prio = list_entry(list_begin(&t->donors), struct thread, d_elem)->priority;
+		if (t->priority < max_prio){
+			t->priority = max_prio;
+		}
+	}
+}
+
+void remove_with_lock(struct lock *lock){
+
+	// if (list_begin(&lock->holder->donors) >= thread_current() -> priority)
+	// struct list_elem *acquire = list_pop_front(&lock -> semaphore.waiters);
+	// lock -> holder = acquire;
+	struct thread *t = thread_current();
+	struct list_elem *e;
+	for (e = list_begin (&t->donors); e != list_end (&t->donors); e = list_next (e)){
+		struct thread *t = list_entry(e, struct thread, d_elem);
+		if (lock == t->wait_on_lock){
+			list_remove(&t->d_elem);
+		}
+		// if (list_entry() == lock->holder->wait_on_lock)
+
+	}
+
+}
+
+bool
+cmp_donors_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED){
+	struct thread *donors_A;
+	struct thread *donors_B;
+
+	donors_A = list_entry(a, struct thread, d_elem);
+	donors_B = list_entry(b, struct thread, d_elem);
+
+	if (donors_A->priority > donors_B->priority){
+
+		return 1;
+	} 
+	return 0;
+
 }

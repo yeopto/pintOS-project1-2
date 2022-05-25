@@ -227,10 +227,18 @@ void
 lock_acquire (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (!intr_context ());
-	ASSERT (!lock_held_by_current_thread (lock)); //현재 스레드가 락을 유지하고 있으면 종료
+	ASSERT (!lock_held_by_current_thread (lock));
 
-	sema_down (&lock->semaphore); // sema_down으로 인해 임계 영역에 진입
-	lock->holder = thread_current (); // 현재 Running 스레드인 것을 반환
+	if (lock->holder) { //지금 lock을 다른 스레드가 소유하고 있다면
+		thread_current()->wait_on_lock = lock;
+		list_insert_ordered(&lock->holder->donors, &thread_current()-> d_elem, cmp_donors_priority, NULL); //holder의 donors에 저장
+		// if (thread_current()->priority > lock->holder->priority)
+		donate_priority();
+	}
+
+	sema_down (&lock->semaphore);
+	lock->holder = thread_current ();
+	thread_current()->wait_on_lock = NULL;
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -269,11 +277,14 @@ lock_try_acquire (struct lock *lock) {
    
    인터럽트 핸들러는 잠금을 획득할 수 없으므로 인터럽트 핸들러 내에서 잠금 해제를 시도하는 것은 의미가 없습니다.
    */
+
 void
 lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
-	ASSERT (lock_held_by_current_thread (lock)); // 현재 스레드가 lock을 유지하고 않으면 종료
-
+	ASSERT (lock_held_by_current_thread (lock));// 현재 스레드가 lock을 유지하고 않으면 종료
+	
+	remove_with_lock(lock);
+	refresh_priority();
 	lock->holder = NULL; // 현재 스레드의 상태를 NULL로 초기화
 	sema_up (&lock->semaphore); // sema_up을 통해 임계 영역에서 벗어남
 }
@@ -420,14 +431,15 @@ cmp_sem_priority(const struct list_elem *a, const struct list_elem *b, void *aux
 
    // printf("a : %d, b : %d\n\n\n", sema_A->priority,sema_B->priority);
 
-
    // return sema_A->priority > sema_B->priority;
-   printf("a : %d, b : %d\n\n\n", sema_a->semaphore.priority,sema_b->semaphore.priority);
+   // printf("a : %d, b : %d\n\n\n", sema_a->semaphore.priority,sema_b->semaphore.priority);
    
    //a값 : 새로 들어오는 priority, b값 : waiters에 가장 앞에 있는 값 
    return sema_a->semaphore.priority > sema_b->semaphore.priority;
    //semaphore의 priority를 직접 들고 다니도록 하여 바로 비교
 }
-	
+
+
+
 
 
