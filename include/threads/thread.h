@@ -91,6 +91,13 @@ struct thread {
 	enum thread_status status;          /* Thread state. */
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
+
+	/*----priority donation----*/
+	int init_priority; // donation 이후 우선순위를 초기화하기 위해 초기값 저장 -> thread의 priority는 donation을 통해 변할 수 있음. 그렇기에 원래 priority를 기억하는 변수를 만듬
+	struct lock *wait_on_lock; // thread가 원하는 lock이 이미 다른 thread에 의해 점유 중일 때, lock의 주소를 저장
+	struct list donations; // A thread가 B thread에 의해 priority가 변경되었다면 A thread의 list donations에 B thread를 기억해놓는다.(자신에게 기부한 기부자 목록)
+	struct list_elem donation_elem; // 또한 B thread는 A thread의 기부자 목록 (list donations)에 자신의 이름을 새겨 놓아야함.
+	/*----priority donation----*/
 	
 	/* 현재 20tick이고 앞으로 80tick 후에 깨워야한다면, 20 + 80 = 100tick이라는 값을 저장해 줄 변수가 필요 */
 	int64_t wakeup_tick;				/* loop기반으로 wating을 하지않으면 각 스레드마다 언제 깨어날지에 대한 정보를 가지고 있어야함 */
@@ -151,5 +158,11 @@ bool cmp_priority(const struct list_elem *a, const struct list_elem *b, void *au
 
 void thread_set_priority(int new_priority);
 int thread_get_priority(void);
+
+/*----priority donation ----*/
+void donate_priority(void);
+void remove_with_lock(struct lock *lock);
+void refresh_priority(void);
+/*----priority donation ----*/
 
 #endif /* threads/thread.h */

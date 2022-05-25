@@ -40,6 +40,7 @@ void cond_broadcast (struct condition *, struct lock *);
 
 // semaphore_elem으로부터 각 semaphore_elem의 쓰레드 디스크립터 가져와서 첫 번째 인자의 우선순위가 두번째 보다 높으면 1을 반환 낮으면 0
 bool cmp_sem_priority(const struct list_elem *a, const struct list_elem *b, void *aux);
+bool thread_compare_donate_priority(const struct list_elem *a, const struct list_elem *b, void *aux);
 
 /* Optimization barrier.
  *
