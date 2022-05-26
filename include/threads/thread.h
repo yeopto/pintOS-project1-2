@@ -101,6 +101,10 @@ struct thread {
 	struct lock *wait_on_lock; //이 스레드가 진입하고자하는 lock
 	struct list donors; //기부해준 스레드들의 리스트
 	struct list_elem d_elem; //to be used in donors list of other threads
+	struct list_elem all_elem;
+	/* advanced scheduler */
+	int nice;
+	int recent_cpu;
 
 
 #ifdef USERPROG

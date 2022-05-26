@@ -193,28 +193,19 @@ lock_acquire (struct lock *lock) {
 	ASSERT (!intr_context ());
 	ASSERT (!lock_held_by_current_thread (lock));
 
-	if(lock->holder){ //if there already is a lock holder
-		thread_current()->wait_on_lock = lock;
-		list_insert_ordered(&lock->holder->donors, &thread_current()-> d_elem, cmp_donors_priority, NULL);
-		donate_priority();
-
+	if (!thread_mlfqs){
+		if(lock->holder){ //if there already is a lock holder
+			thread_current()->wait_on_lock = lock;
+			list_insert_ordered(&lock->holder->donors, &thread_current()-> d_elem, cmp_donors_priority, NULL);
+			donate_priority();
+		}
 	}
 
 	sema_down (&lock->semaphore);
 	lock->holder = thread_current ();
 	thread_current()->wait_on_lock = NULL;
 
-	// if (&lock->semaphore ==0){ //지금 lock을 다른 스레드가 소유하고 있다면
-	// 	thread_current()->wait_on_lock = &lock;
-	// 	list_insert_ordered(&lock->holder->donors, &thread_current()-> d_elem, cmp_priority, NULL); //holder의 donors에 저장
-
-	// 	if (thread_current()->priority > lock->holder->priority)
-	// 		donate_priority();
-	// }
-
-	// sema_down (&lock->semaphore);
-	// thread_current()->wait_on_lock = NULL;
-	// lock->holder = thread_current ();
+	
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -247,11 +238,14 @@ lock_release (struct lock *lock) {
 	ASSERT (lock != NULL);
 	ASSERT (lock_held_by_current_thread (lock));
 
-	
-	remove_with_lock(lock);
-	refresh_priority();
+	if (!thread_mlfqs){
+	/* priority donation 시 */
+		remove_with_lock(lock);
+		refresh_priority();
+	}
 	lock->holder = NULL;
 	sema_up (&lock->semaphore);
+	
 }
 
 /* Returns true if the current thread holds LOCK, false
@@ -334,7 +328,7 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED) {
 	ASSERT (lock_held_by_current_thread (lock));
 
 	if (!list_empty (&cond->waiters)){
-		// list_sort (&cond->waiters, cmp_sema_priority, NULL);
+		list_sort (&cond->waiters, cmp_sema_priority, NULL);
 		sema_up (&list_entry (list_pop_front (&cond->waiters),
 					struct semaphore_elem, elem)->semaphore); //cond waiters의 맨 앞 애의 semaphore를 up해줌
 	}

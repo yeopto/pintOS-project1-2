@@ -142,11 +142,17 @@ timer_print_stats (void) {
 static void timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
 	thread_tick ();
+
+	// if(thread_mlfqs){
+		
+	// }
+
+	/*alarm clock */
 	// 1) 여기서 ticks는 interrupt 발생 시, 증가하는 tick이다.
 	// 2) get_next_tick_to_awake() 반환 값이 꺠워야될(이미 다 잔) 스레드 중 최소 tick이다. 
 	// 3) 현재 증가하는 tick이 이 값을 넘었을 때는 깨워야될 스레드가 최소 1개 이상이므로 그 때부터 thread_awake로 깨우면 된다. 계속 깨울 필요가 없다.
-	if (get_next_tick_to_awake() <= ticks) 
-		thread_awake(ticks); //ticks: 지금 이 시점
+	// if (get_next_tick_to_awake() <= ticks) 
+	// 	thread_awake(ticks); //ticks: 지금 이 시점
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
