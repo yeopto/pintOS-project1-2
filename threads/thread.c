@@ -412,7 +412,7 @@ thread_set_nice (int nice UNUSED) {
 	// 현재 스레드 nice값 변경
 	// nice값 변경 후, 현재 스레드 우선순위 재계산
 	// 우선순위에 의해 scheduling
-
+	// 인터럽트를 비활성화 하는 이유? : 
 }
 
 /* Returns the current thread's nice value. */
@@ -871,55 +871,34 @@ void mlfqs_increment(void){
 	}
 } 
 
-void mlfqs_recalc_priority(void){
+/* ready, sleep, current 스레드의 리스트를 받아서 동작 시켜주는 코드*/
+// 이 코드는 현재 test case에서는 통과를 한다 -> 현재 테스트에서는 lock을 요청하는 부분이 없는 것 같다 (그래서 통과하는듯)
+// lock_acquire() -> sema_down(watiers 리스트에 들어감) -> block -> schedule -> launch(running <-> block) -> 따로 list에 안들어감
+// 따라서 watiers를 고려하지 않았기 때문에 recent_cpu가 다시 계산이 되지 않고 -> 처리되지 않는 스레드가 발생한다!
 
-	struct list_elem *e;
-	struct thread *t_c = thread_current();
-	
-	if(t_c != idle_thread){
-		mlfqs_priority(t_c);
-	}	
-
-		
-	for (e = list_begin (&ready_list); e != list_end (&ready_list); e = list_next (e)){
-		struct thread *t_r = list_entry(e, struct thread, elem);
-			mlfqs_priority(t_r);
-		
-		}
-
-
-	for (e = list_begin (&sleep_list); e != list_end (&sleep_list); e = list_next (e)){
-		struct thread *t_s = list_entry(e, struct thread, elem);
-			mlfqs_priority(t_s);
-		}
-	return;
-
-
-}
-
-// void mlfqs_recalc_recent_cpu(void){
+// void mlfqs_recalc(void){
 
 // 	struct list_elem *e;
 // 	struct thread *t_c = thread_current();
 	
 // 	if(t_c != idle_thread){
+// 		mlfqs_priority(t_c);
 // 		mlfqs_recent_cpu(t_c);
-
 // 	}	
 
 		
 // 	for (e = list_begin (&ready_list); e != list_end (&ready_list); e = list_next (e)){
 // 		struct thread *t_r = list_entry(e, struct thread, elem);
+// 			mlfqs_priority(t_r);
 // 			mlfqs_recent_cpu(t_r);
-
 		
 // 		}
 
 
 // 	for (e = list_begin (&sleep_list); e != list_end (&sleep_list); e = list_next (e)){
 // 		struct thread *t_s = list_entry(e, struct thread, elem);
+// 			mlfqs_priority(t_s);
 // 			mlfqs_recent_cpu(t_s);
-
 // 		}
 // 	return;
 
@@ -928,6 +907,13 @@ void mlfqs_recalc_priority(void){
 
 
 
+
+/* thread 생성시 all list를 생성하여 관리한다 */
+// 이렇게 하면 어떤 thread들도 누락되지 않고 계산될 수 있다.
+// 1) all_list 선언 2) all_list list 초기화 3) curr 스레드 종료 시, list에서 삭제 4) mlfqs_recal(all list) 계산함수 구현 
+// 문제가 있다면 -> all list를 삭제해줘야하는데
+// 이 부분은 schedule()함수 호출이 되고, curr 스레드가 종료 된다면 curr->status == THREAD_DYING 조건문 안에
+// all_list에서 삭제 해주면 된다. 
 void mlfqs_recalc(void)
 {
 	struct list_elem *e;
