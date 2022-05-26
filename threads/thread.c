@@ -871,21 +871,47 @@ void mlfqs_increment(void){
 	}
 } 
 
-// void mlfqs_recalc(void){
+void mlfqs_recalc_priority(void){
+
+	struct list_elem *e;
+	struct thread *t_c = thread_current();
+	
+	if(t_c != idle_thread){
+		mlfqs_priority(t_c);
+	}	
+
+		
+	for (e = list_begin (&ready_list); e != list_end (&ready_list); e = list_next (e)){
+		struct thread *t_r = list_entry(e, struct thread, elem);
+			mlfqs_priority(t_r);
+		
+		}
+
+
+	for (e = list_begin (&sleep_list); e != list_end (&sleep_list); e = list_next (e)){
+		struct thread *t_s = list_entry(e, struct thread, elem);
+			mlfqs_priority(t_s);
+		}
+	return;
+
+
+}
+
+// void mlfqs_recalc_recent_cpu(void){
 
 // 	struct list_elem *e;
 // 	struct thread *t_c = thread_current();
 	
 // 	if(t_c != idle_thread){
 // 		mlfqs_recent_cpu(t_c);
-// 		mlfqs_priority(t_c);
+
 // 	}	
 
 		
 // 	for (e = list_begin (&ready_list); e != list_end (&ready_list); e = list_next (e)){
 // 		struct thread *t_r = list_entry(e, struct thread, elem);
 // 			mlfqs_recent_cpu(t_r);
-// 			mlfqs_priority(t_r);
+
 		
 // 		}
 
@@ -893,7 +919,7 @@ void mlfqs_increment(void){
 // 	for (e = list_begin (&sleep_list); e != list_end (&sleep_list); e = list_next (e)){
 // 		struct thread *t_s = list_entry(e, struct thread, elem);
 // 			mlfqs_recent_cpu(t_s);
-// 			mlfqs_priority(t_s);
+
 // 		}
 // 	return;
 
