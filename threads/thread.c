@@ -386,8 +386,8 @@ thread_set_priority (int new_priority) {
 	if(thread_mlfqs)	// mlfqs에서는 priority를 임의로 변경 못함 ->비활성화
 		return;
 	thread_current ()->origin_priority = new_priority;
-	refresh_priority();
-	test_max_priority();// 현재 쓰레드의 우선 순위와 ready_list에서 가장 높은 우선 순위를 비교하여 스케쥴링 하는 함수 호출
+	refresh_priority(); // 현 thread의 donations 리스트에 따라 우선순위 갱신
+	test_max_priority();// 우선순위를 갱신한 경우에도 확인 필요
 
 }
 
@@ -782,6 +782,12 @@ void donate_priority(void){
 	}
 }
 
+
+/*
+스레드의 우선순위가 변경 되었을 때, donation을 고려하여 우선순위를 다시 결정하는 함수 
+현재 스레드의 우선순위를 기부받기 전의 우선순위로 변경
+가장 우선순위가 높은 donations 리스트의 thread와 현재 thread의 우선순위를 비교하여 높은 값을 현재 thread의 우선순위로 설정
+*/
 void refresh_priority(void){
 	struct thread  *t = thread_current();
 
@@ -794,23 +800,29 @@ void refresh_priority(void){
 	}
 }
 
-void remove_with_lock(struct lock *lock){
+/*
+lock을 해지했을 때, donations 리스트에서 해당 엔트리를 삭제하기 위한 함수
+현재 thread의 donations 리스트를 확인하여 해지할 lock을 보유하고 있는 엔트리를 삭제
+*/
 
-	// if (list_begin(&lock->holder->donors) >= thread_current() -> priority)
-	// struct list_elem *acquire = list_pop_front(&lock -> semaphore.waiters);
-	// lock -> holder = acquire;
+void remove_with_lock(struct lock *lock){ // 해제되는 lock을 인자로 받음
+
+
 	struct thread *t = thread_current();
-	struct list_elem *e;
+	struct list_elem *e;		//donation elem
 	for (e = list_begin (&t->donors); e != list_end (&t->donors); e = list_next (e)){
 		struct thread *t = list_entry(e, struct thread, d_elem);
 		if (lock == t->wait_on_lock){
 			list_remove(&t->d_elem);
 		}
-		// if (list_entry() == lock->holder->wait_on_lock)
 
 	}
 
 }
+
+// donors 우선순위 비교도 따로 구현해줘야한다. 
+// list_elem으로 받으면 문제점 
+// -> list_elem은 현재 값을 담고 있고, 여기서는 새로운 값을 담기 때문에 갱신이 되버려서 문제가 된다.
 
 bool
 cmp_donors_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED){
