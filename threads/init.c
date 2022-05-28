@@ -79,7 +79,7 @@ main (void) {
 
 	/* Initialize ourselves as a thread so we can use locks,
 	   then enable console locking. */
-	thread_init ();
+	thread_init ();		//Main thread 생성(threading에 의해 관리되는 최초의 thread)
 	console_init ();
 
 	/* Initialize memory system. */
@@ -241,10 +241,10 @@ run_task (char **argv) {
 
 	printf ("Executing '%s':\n", task);
 #ifdef USERPROG
-	if (thread_tests){
+	if (thread_tests){ // parse_options userprog -threads-tests에서 true로 바뀜
 		run_test (task);
 	} else {
-		process_wait (process_create_initd (task));
+		process_wait (process_create_initd (task)); // task에 들어오는 것? argv[1] ? argv 전체?
 	}
 #else
 	run_test (task);
@@ -255,7 +255,7 @@ run_task (char **argv) {
 /* Executes all of the actions specified in ARGV[]
    up to the null pointer sentinel. */
 static void
-run_actions (char **argv) {
+run_actions (char **argv) {	// command line에 썼던 내용을 동작시키는 함수
 	/* An action. */
 	struct action {
 		char *name;                       /* Action name. */
@@ -275,6 +275,7 @@ run_actions (char **argv) {
 #endif
 		{NULL, 0, NULL},
 	};
+
 
 	while (*argv != NULL) {
 		const struct action *a;
