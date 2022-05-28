@@ -225,7 +225,7 @@ strtok_r (char *s, const char *delimiters, char **save_ptr) {
 	/* If S is nonnull, start from it.
 	   If S is null, start from saved position. */
 	if (s == NULL)
-		s = *save_ptr;
+		s = *save_ptr; // Null 이면 처음에 보내준 인자 주소값
 	ASSERT (s != NULL);
 
 	/* Skip any DELIMITERS at our current position. */
@@ -344,4 +344,3 @@ strlcat (char *dst, const char *src, size_t size) {
 	}
 	return src_len + dst_len;
 }
-
