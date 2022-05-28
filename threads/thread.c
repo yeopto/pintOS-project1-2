@@ -918,11 +918,6 @@ void mlfqs_increment(void){
 // }
 
 
-<<<<<<< HEAD
-
-
-=======
->>>>>>> john0325
 /* thread 생성시 all list를 생성하여 관리한다 */
 // 이렇게 하면 어떤 thread들도 누락되지 않고 계산될 수 있다.
 // 1) all_list 선언 2) all_list list 초기화 3) curr 스레드 종료 시, list에서 삭제 4) mlfqs_recal(all list) 계산함수 구현 
