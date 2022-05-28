@@ -429,8 +429,8 @@ thread_set_priority (int new_priority) {
 	if(thread_mlfqs)	// mlfqs에서는 priority를 임의로 변경 못함 ->비활성화
 		return;
 	thread_current ()->origin_priority = new_priority;
-	refresh_priority();
-	test_max_priority();// 현재 쓰레드의 우선 순위와 ready_list에서 가장 높은 우선 순위를 비교하여 스케쥴링 하는 함수 호출
+	refresh_priority(); // 현 thread의 donations 리스트에 따라 우선순위 갱신
+	test_max_priority();// 우선순위를 갱신한 경우에도 확인 필요
 
 >>>>>>> d8240afe8c4871f5c2284927748749fd5f57f530
 }
@@ -464,8 +464,12 @@ thread_set_nice (int nice UNUSED) {
 	// 현재 스레드 nice값 변경
 	// nice값 변경 후, 현재 스레드 우선순위 재계산
 	// 우선순위에 의해 scheduling
+<<<<<<< HEAD
 
 >>>>>>> d8240afe8c4871f5c2284927748749fd5f57f530
+=======
+	// 인터럽트를 비활성화 하는 이유? : 
+>>>>>>> 37ce0f233bd7c85ac6662551b6ea8260def4c664
 }
 
 /* Returns the current thread's nice value. */
@@ -613,7 +617,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 	list_init(&t->donors);
 	t->wait_on_lock = NULL;
 
-	/* mlfq */
+	/* mlfqs */
 	t->nice = NICE_DEFAULT;
 	t->recent_cpu = RECENT_CPU_DEFAULT;
 	if(t != idle_thread) {
@@ -944,6 +948,12 @@ void donate_priority(void){
 	}
 }
 
+
+/*
+스레드의 우선순위가 변경 되었을 때, donation을 고려하여 우선순위를 다시 결정하는 함수 
+현재 스레드의 우선순위를 기부받기 전의 우선순위로 변경
+가장 우선순위가 높은 donations 리스트의 thread와 현재 thread의 우선순위를 비교하여 높은 값을 현재 thread의 우선순위로 설정
+*/
 void refresh_priority(void){
 	struct thread  *t = thread_current();
 
@@ -956,19 +966,21 @@ void refresh_priority(void){
 	}
 }
 
-void remove_with_lock(struct lock *lock){
+/*
+lock을 해지했을 때, donations 리스트에서 해당 엔트리를 삭제하기 위한 함수
+현재 thread의 donations 리스트를 확인하여 해지할 lock을 보유하고 있는 엔트리를 삭제
+*/
 
-	// if (list_begin(&lock->holder->donors) >= thread_current() -> priority)
-	// struct list_elem *acquire = list_pop_front(&lock -> semaphore.waiters);
-	// lock -> holder = acquire;
+void remove_with_lock(struct lock *lock){ // 해제되는 lock을 인자로 받음
+
+
 	struct thread *t = thread_current();
-	struct list_elem *e;
+	struct list_elem *e;		//donation elem
 	for (e = list_begin (&t->donors); e != list_end (&t->donors); e = list_next (e)){
 		struct thread *t = list_entry(e, struct thread, d_elem);
 		if (lock == t->wait_on_lock){
 			list_remove(&t->d_elem);
 		}
-		// if (list_entry() == lock->holder->wait_on_lock)
 
 >>>>>>> d8240afe8c4871f5c2284927748749fd5f57f530
 	}
@@ -994,6 +1006,7 @@ void mlfqs_priority (struct thread *t){
 	
 }
 
+<<<<<<< HEAD
 void mlfqs_recent_cpu (struct thread *t){
 	if (t == idle_thread)
 		return;
@@ -1022,6 +1035,12 @@ void mlfqs_increment_cpu(void){
 }
 
 =======
+=======
+// donors 우선순위 비교도 따로 구현해줘야한다. 
+// list_elem으로 받으면 문제점 
+// -> list_elem은 현재 값을 담고 있고, 여기서는 새로운 값을 담기 때문에 갱신이 되버려서 문제가 된다.
+
+>>>>>>> 37ce0f233bd7c85ac6662551b6ea8260def4c664
 bool
 cmp_donors_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED){
 	struct thread *donors_A;
@@ -1081,55 +1100,34 @@ void mlfqs_increment(void){
 	}
 } 
 
-void mlfqs_recalc_priority(void){
+/* ready, sleep, current 스레드의 리스트를 받아서 동작 시켜주는 코드*/
+// 이 코드는 현재 test case에서는 통과를 한다 -> 현재 테스트에서는 lock을 요청하는 부분이 없는 것 같다 (그래서 통과하는듯)
+// lock_acquire() -> sema_down(watiers 리스트에 들어감) -> block -> schedule -> launch(running <-> block) -> 따로 list에 안들어감
+// 따라서 watiers를 고려하지 않았기 때문에 recent_cpu가 다시 계산이 되지 않고 -> 처리되지 않는 스레드가 발생한다!
 
-	struct list_elem *e;
-	struct thread *t_c = thread_current();
-	
-	if(t_c != idle_thread){
-		mlfqs_priority(t_c);
-	}	
-
-		
-	for (e = list_begin (&ready_list); e != list_end (&ready_list); e = list_next (e)){
-		struct thread *t_r = list_entry(e, struct thread, elem);
-			mlfqs_priority(t_r);
-		
-		}
-
-
-	for (e = list_begin (&sleep_list); e != list_end (&sleep_list); e = list_next (e)){
-		struct thread *t_s = list_entry(e, struct thread, elem);
-			mlfqs_priority(t_s);
-		}
-	return;
-
-
-}
-
-// void mlfqs_recalc_recent_cpu(void){
+// void mlfqs_recalc(void){
 
 // 	struct list_elem *e;
 // 	struct thread *t_c = thread_current();
 	
 // 	if(t_c != idle_thread){
+// 		mlfqs_priority(t_c);
 // 		mlfqs_recent_cpu(t_c);
-
 // 	}	
 
 		
 // 	for (e = list_begin (&ready_list); e != list_end (&ready_list); e = list_next (e)){
 // 		struct thread *t_r = list_entry(e, struct thread, elem);
+// 			mlfqs_priority(t_r);
 // 			mlfqs_recent_cpu(t_r);
-
 		
 // 		}
 
 
 // 	for (e = list_begin (&sleep_list); e != list_end (&sleep_list); e = list_next (e)){
 // 		struct thread *t_s = list_entry(e, struct thread, elem);
+// 			mlfqs_priority(t_s);
 // 			mlfqs_recent_cpu(t_s);
-
 // 		}
 // 	return;
 
@@ -1137,8 +1135,21 @@ void mlfqs_recalc_priority(void){
 // }
 
 
+<<<<<<< HEAD
 
+
+<<<<<<< HEAD
 >>>>>>> d8240afe8c4871f5c2284927748749fd5f57f530
+=======
+=======
+>>>>>>> john0325
+/* thread 생성시 all list를 생성하여 관리한다 */
+// 이렇게 하면 어떤 thread들도 누락되지 않고 계산될 수 있다.
+// 1) all_list 선언 2) all_list list 초기화 3) curr 스레드 종료 시, list에서 삭제 4) mlfqs_recal(all list) 계산함수 구현 
+// 문제가 있다면 -> all list를 삭제해줘야하는데
+// 이 부분은 schedule()함수 호출이 되고, curr 스레드가 종료 된다면 curr->status == THREAD_DYING 조건문 안에
+// all_list에서 삭제 해주면 된다. 
+>>>>>>> 37ce0f233bd7c85ac6662551b6ea8260def4c664
 void mlfqs_recalc(void)
 {
 	struct list_elem *e;
