@@ -520,7 +520,7 @@ init_thread (struct thread *t, const char *name, int priority) {
 	list_init(&t->donors);
 	t->wait_on_lock = NULL;
 
-	/* mlfq */
+	/* mlfqs */
 	t->nice = NICE_DEFAULT;
 	t->recent_cpu = RECENT_CPU_DEFAULT;
 	if(t != idle_thread) {

@@ -39,19 +39,27 @@ process_init (void) {
  * thread id, or TID_ERROR if the thread cannot be created.
  * Notice that THIS SHOULD BE CALLED ONCE. */
 tid_t
-process_create_initd (const char *file_name) {
+process_create_initd (const char *file_name) { // command line에서 받은 arguments를 통해 실행하고자 하는 파일에 대한 process를 만드는 과정의 시작
 	char *fn_copy;
 	tid_t tid;
+	char *save_ptr;
 
 	/* Make a copy of FILE_NAME.
 	 * Otherwise there's a race between the caller and load(). */
-	fn_copy = palloc_get_page (0);
+	fn_copy = palloc_get_page (0); // memory setting -> 메모리의 값을 원하는 크기만큼 세팅
 	if (fn_copy == NULL)
 		return TID_ERROR;
-	strlcpy (fn_copy, file_name, PGSIZE);
+	strlcpy (fn_copy, file_name, PGSIZE); // file_name을 fn_copy에 문자열 복사하겠다.
+
+	/* -------------- Project 2 ---------------*/
+	/* 첫번째 공백 전까지의 문자열 파싱*/
+	file_name = strtok_r (file_name, " ", &save_ptr);
 
 	/* Create a new thread to execute FILE_NAME. */
-	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy);
+	// 주의사항) 1) 인자 file_name은 command line에서 file의 이름만 parsing한 것이어야함
+	//         2) 인자 fn_copy는 command line 전체를 넣어줘야함
+	//         -> 만약 이렇게 하지 않으면 stack에 앞 부분만 담기기 때문에 문제가 발생한다!!
+	tid = thread_create (file_name, PRI_DEFAULT, initd, fn_copy); // file_name을 이름으로 하고 PRI_DEFAULT를 우선순위 값으로 가지는 새로운 스레드 생성
 	if (tid == TID_ERROR)
 		palloc_free_page (fn_copy);
 	return tid;
@@ -160,11 +168,28 @@ error:
 
 /* Switch the current execution context to the f_name.
  * Returns -1 on fail. */
+
+/* process 실행 */
+// 파싱되지 않은 f_name을 인자로 받아서 전체적으로 파싱해준다
 int
-process_exec (void *f_name) {
+process_exec (void *f_name) { 
 	char *file_name = f_name;
 	bool success;
+	char *token, *save_ptr;
+	int argc=0;
+	char *argv[30];
 
+	/* -------------- Project 2 ---------------*/
+	/* Command Line 전체 Parsing */
+	for (token = strtok_r (file_name, " ", &save_ptr); token != NULL; 
+	token = strtok_r (NULL, " ", &save_ptr)){
+		
+		
+		argv[argc] = token;
+		argc++;
+
+	}
+   
 	/* We cannot use the intr_frame in the thread structure.
 	 * This is because when current thread rescheduled,
 	 * it stores the execution information to the member. */
@@ -180,13 +205,109 @@ process_exec (void *f_name) {
 	success = load (file_name, &_if);
 
 	/* If load failed, quit. */
-	palloc_free_page (file_name);
 	if (!success)
+	{
+		palloc_free_page(file_name);
 		return -1;
+	}
+
+	argument_stack(&_if, argc, argv);
+
+	// argument_stack(argc, argv, _if.rsp);
+
+	hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp, true);
 
 	/* Start switched process. */
 	do_iret (&_if);
 	NOT_REACHED ();
+}
+
+
+
+// static void argument_stack(int argc_cnt, char **argv_list, void **stp){
+// 	int i;
+// 	char *argu_addr[128];
+// 	struct intr_frame *if_;
+
+	/* 프로그램 이름 및 인자(문자열) push */
+	/* 프로그램 이름 및 인자 주소들 push */
+	/* argv (문자열을 가리키는 주소들의 배열을 가리킴) push*/
+	/* argc (문자열의 개수 저장) push */
+	/* fake address(0) 저장 */
+
+
+// 	for(i = argc_cnt-1; i>-1; i--){
+// 		for(int j=strlen(argv_list[i]+1);j>-1;j--){
+			
+// 			*stp = *stp - 1;
+		
+		
+// 		argu_addr[i] = stp;
+
+// 		}
+// 	}
+
+// 	while ( *(int*)stp % 8 != 0 ){
+// 		stp--;
+// 		*stp = 0; 
+// 	}
+
+// 	for (i=argc_cnt; i>-1 ; i--){
+// 		*stp = *stp - 8;
+// 		if (i == argc_cnt){
+// 			*stp = 0; 
+// 		}
+// 		else{
+// 			*stp = &argu_addr[i];
+// 		}
+// 	}
+
+// 	*stp = *stp -8;
+// 	*stp = 0;
+
+// }
+
+
+// TODO: 유저 스택에 파싱된 토큰을 저장하는 함수 구현
+/* 
+ * 유저 스택에 프로그램 이름과 인자들을 저장하는 함수
+ * parse: 프로그램 이름과 인자가 저장되어 있는 메모리 공간,
+ * count: 인자의 개수
+ * esp: 스택 포인터를 가리키는 주소
+*/
+
+static void argument_stack(struct intr_frame *if_, int argv_cnt, char **argv_list) {
+	int i;
+	char *argu_addr[128];
+	int argc_len;
+
+	for (i = argv_cnt-1; i >= 0; i--){
+		argc_len = strlen(argv_list[i]);
+		if_->rsp = if_->rsp - (argc_len+1); 
+		memcpy(if_->rsp, argv_list[i], (argc_len+1));
+		argu_addr[i] = if_->rsp;
+	}
+
+	while (if_->rsp%8 != 0){
+		if_->rsp--;
+		memset(if_->rsp, 0, sizeof(uint8_t));
+	}
+
+	for (i = argv_cnt; i>=0; i--){
+		if_->rsp = if_->rsp - 8;
+		if (i == argv_cnt){
+			memset(if_->rsp, 0, sizeof(char **));
+		}else{
+			memcpy(if_->rsp, &argu_addr[i] , sizeof(char **));
+		}
+	}
+
+	if_->rsp = if_->rsp - 8;
+	memset(if_->rsp, 0, sizeof(void *));
+
+	if_->R.rdi = argv_cnt;
+	if_->R.rsi = if_->rsp + 8;	
+
 }
 
 
@@ -204,6 +325,7 @@ process_wait (tid_t child_tid UNUSED) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
+	while(1){}
 	return -1;
 }
 
@@ -316,9 +438,9 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		uint32_t read_bytes, uint32_t zero_bytes,
 		bool writable);
 
-/* Loads an ELF executable from FILE_NAME into the current thread.
- * Stores the executable's entry point into *RIP
- * and its initial stack pointer into *RSP.
+/* Loads an ELF(실행파일) executable from FILE_NAME into the current thread.
+ * Stores the executable's entry point into *RIP(다음 실행할 명령어의 주소 보관함)
+ * and its initial stack pointer into *RSP(스택의 꼭대기).
  * Returns true if successful, false otherwise. */
 static bool
 load (const char *file_name, struct intr_frame *if_) {
@@ -637,3 +759,5 @@ setup_stack (struct intr_frame *if_) {
 	return success;
 }
 #endif /* VM */
+
+
