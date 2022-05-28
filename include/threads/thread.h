@@ -28,6 +28,8 @@ typedef int tid_t;
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
 
+
+
 /* A kernel thread or user process.
  *
  * Each thread structure is stored in its own 4 kB page.  The
@@ -97,15 +99,16 @@ struct thread {
 	int64_t wakeup_tick;
 
 	/* Shared between thread.c and synch.c. */
+	/* donation */
 	struct list_elem elem;              /* List element. */
+    struct list_elem all_elem;
 	struct lock *wait_on_lock; //이 스레드가 진입하고자하는 lock
 	struct list donors; //기부해준 스레드들의 리스트
 	struct list_elem d_elem; //to be used in donors list of other threads
-	struct list_elem all_elem;
-	/* advanced scheduler */
+
+	/* mlfq */
 	int nice;
 	int recent_cpu;
-
 
 #ifdef USERPROG
 	/* Owned by userprog/process.c. */
@@ -154,12 +157,22 @@ int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
 void do_iret (struct intr_frame *tf);
-/* donation */
-bool cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
-bool cmp_donors_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
-void test_max_priority(void);
-void refresh_priority(void);
-void remove_with_lock(struct lock *lock);
-void donate_priority(void);
 
 #endif /* threads/thread.h */
+
+void test_max_priority(void);
+bool cmp_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+
+// donation
+void remove_with_lock(struct lock *lock);
+void refresh_priority(void);
+void donate_priority(void);
+bool cmp_donors_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+
+//mlfqs
+void mlfqs_priority(struct thread *t);
+void mlfqs_recent_cpu(struct thread *t);
+void mlfqs_load_avg(void);
+void mlfqs_increment(void);
+void mlfqs_recal_priority(void);
+void mlfqs_recal_cpu(void);

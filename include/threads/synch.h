@@ -1,6 +1,7 @@
 #ifndef THREADS_SYNCH_H
 #define THREADS_SYNCH_H
 
+#include <debug.h> // cmp_sem_priority 함수를 추가하고 UNUSED를 사용하기 위해서 선언해줘야한다.
 #include <list.h>
 #include <stdbool.h>
 
@@ -8,6 +9,7 @@
 struct semaphore {
 	unsigned value;             /* Current value. */
 	struct list waiters;        /* List of waiting threads. */
+	int priority;				/* priority 추가 */
 };
 
 void sema_init (struct semaphore *, unsigned value);
@@ -41,6 +43,9 @@ void cond_init (struct condition *);
 void cond_wait (struct condition *, struct lock *);
 void cond_signal (struct condition *, struct lock *);
 void cond_broadcast (struct condition *, struct lock *);
+
+bool cmp_sem_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
+bool cmp_donors_priority(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 
 /* Optimization barrier.
  *
