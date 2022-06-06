@@ -18,6 +18,7 @@
 #include "threads/mmu.h"
 #include "threads/vaddr.h"
 #include "intrinsic.h"
+#include "lib/string.h"
 #ifdef VM
 #include "vm/vm.h"
 #endif
@@ -26,11 +27,27 @@ static void process_cleanup (void);
 static bool load (const char *file_name, struct intr_frame *if_);
 static void initd (void *f_name);
 static void __do_fork (void *);
+static bool duplicate_pte (uint64_t *pte, void *va, void *aux);
+static void argument_stack(struct intr_frame *if_, int argv_cnt, char **argv_list);
+
 
 /* General process initializer for initd and other process. */
 static void
 process_init (void) {
 	struct thread *current = thread_current ();
+}
+
+// pid에 해당하는 자식 스레드 구조체를 child_list를 순회하며 찾은 뒤 해당 자식 스레드를 반환함 process_fork()에서 실행
+struct thread * get_child_with_pid(int pid) {
+	struct thread * cur = thread_current();
+	struct list *child_list = &cur->child_list;
+	for (struct list_elem *e = list_begin(child_list); e != list_end(child_list); e = list_next(e)){
+		struct thread *t = list_entry(e, struct thread, child_elem);
+		if (t->tid == pid) {
+			return t;
+		}
+	}
+	return NULL;
 }
 
 /* Starts the first userland program, called "initd", loaded from FILE_NAME.
@@ -42,7 +59,6 @@ tid_t
 process_create_initd (const char *file_name) { // command line에서 받은 arguments를 통해 실행하고자 하는 파일에 대한 process를 만드는 과정의 시작
 	char *fn_copy;
 	tid_t tid;
-	char *save_ptr;
 
 	/* Make a copy of FILE_NAME.
 	 * Otherwise there's a race between the caller and load(). */
@@ -53,8 +69,8 @@ process_create_initd (const char *file_name) { // command line에서 받은 argu
 
 	/* -------------- Project 2 ---------------*/
 	/* 첫번째 공백 전까지의 문자열 파싱*/
-	file_name = strtok_r (file_name, " ", &save_ptr);
-
+	char *save_ptr;
+	strtok_r (file_name, " ", &save_ptr);
 	/* Create a new thread to execute FILE_NAME. */
 	// 주의사항) 1) 인자 file_name은 command line에서 file의 이름만 parsing한 것이어야함
 	//         2) 인자 fn_copy는 command line 전체를 넣어줘야함
@@ -79,20 +95,35 @@ initd (void *f_name) {
 	NOT_REACHED ();
 }
 
+
 /* Clones the current process as `name`. Returns the new process's thread id, or
  * TID_ERROR if the thread cannot be created. */
 tid_t
-process_fork (const char *name, struct intr_frame *if_ UNUSED) {
+process_fork (const char *name, struct intr_frame *if_ UNUSED) { // 자식 이름이랑 인터럽트 프레임 가져오고
 	/* Clone current thread to new thread.*/
-	return thread_create (name,
-			PRI_DEFAULT, __do_fork, thread_current ());
+	struct thread *cur = thread_current(); // 부모가 돌고 있지
+	memcpy(&cur->parent_if, if_, sizeof(struct intr_frame)); // process_fork까지 오기전에 레지스터에 적재해놓은걸 parent_if라는 곳에 복사
+	
+	// 자식 스레드는 만들어지고 thread_create에서 unblock 되서 ready 큐로 감 부모스레드 아직 실행 중
+	tid_t tid = thread_create(name, PRI_DEFAULT, __do_fork, cur); // do fork에서 sema up을 해주면 97번째 줄 sema down에서 무한루프상태인데 그게 풀림 그리고 98번줄 수행
+	if (tid == TID_ERROR) {
+		return TID_ERROR;
+	}
+
+	struct thread *child = get_child_with_pid(tid);
+	sema_down(&child->fork_sema); // 여기서 부모 스레드는 블락 된다. 그럼 자연스럽게 러닝 스레드는 자식 스레드 그리고 do fork 수행하면서 dofork에서 sema up 해줌(부모 깨움 unblock) 부모는 레디리스트로
+	if (child->exit_status == -1) {
+		return TID_ERROR;
+	}
+	
+	return tid; // 포크가 완료된 자식 스레드 반환
 }
 
 #ifndef VM
 /* Duplicate the parent's address space by passing this function to the
  * pml4_for_each. This is only for the project 2. */
 static bool
-duplicate_pte (uint64_t *pte, void *va, void *aux) {
+duplicate_pte (uint64_t *pte, void *va, void *aux) { // 정보만 있는 스레드를 맵핑해줌 (do fork에서 실행)
 	struct thread *current = thread_current ();
 	struct thread *parent = (struct thread *) aux;
 	void *parent_page;
@@ -100,22 +131,32 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
 	bool writable;
 
 	/* 1. TODO: If the parent_page is kernel page, then return immediately. */
-
+	if is_kernel_vaddr(va) {
+		return true;
+	}
 	/* 2. Resolve VA from the parent's page map level 4. */
 	parent_page = pml4_get_page (parent->pml4, va);
-
+	if (parent_page == NULL) {
+		return false;
+	}
 	/* 3. TODO: Allocate new PAL_USER page for the child and set result to
 	 *    TODO: NEWPAGE. */
-
+	newpage = palloc_get_page(PAL_USER);
+	if (newpage == NULL) {
+		return false;
+	}
 	/* 4. TODO: Duplicate parent's page to the new page and
 	 *    TODO: check whether parent's page is writable or not (set WRITABLE
 	 *    TODO: according to the result). */
-
+	memcpy(newpage, parent_page, PGSIZE);
+	writable = is_writable(pte); // *PTE is an address that points to parent_page
 	/* 5. Add new page to child's page table at address VA with WRITABLE
 	 *    permission. */
 	if (!pml4_set_page (current->pml4, va, newpage, writable)) {
 		/* 6. TODO: if fail to insert page, do error handling. */
+		return false;
 	}
+
 	return true;
 }
 #endif
@@ -126,22 +167,25 @@ duplicate_pte (uint64_t *pte, void *va, void *aux) {
  *       this function. */
 static void
 __do_fork (void *aux) {
-	struct intr_frame if_;
-	struct thread *parent = (struct thread *) aux;
-	struct thread *current = thread_current ();
+	struct intr_frame if_; // 자식 스레드를 위한 인터럽트 프레임
+	struct thread *parent = (struct thread *) aux; // 부모스레드
+	struct thread *current = thread_current (); // 자식스레드
 	/* TODO: somehow pass the parent_if. (i.e. process_fork()'s if_) */
 	struct intr_frame *parent_if;
 	bool succ = true;
+	parent_if = &parent->parent_if;
 
 	/* 1. Read the cpu context to local stack. */
-	memcpy (&if_, parent_if, sizeof (struct intr_frame));
+	memcpy (&if_, parent_if, sizeof (struct intr_frame)); // 부모의 if를 자식의 if로 복사
+	if_.R.rax = 0;
 
 	/* 2. Duplicate PT */
 	current->pml4 = pml4_create();
 	if (current->pml4 == NULL)
 		goto error;
 
-	process_activate (current);
+	process_activate (current); // tss를 업데이트 해줌
+
 #ifdef VM
 	supplemental_page_table_init (&current->spt);
 	if (!supplemental_page_table_copy (&current->spt, &parent->spt))
@@ -157,13 +201,34 @@ __do_fork (void *aux) {
 	 * TODO:       from the fork() until this function successfully duplicates
 	 * TODO:       the resources of parent.*/
 
-	process_init ();
+	// multi-oom) Failed to duplicate
+	if (parent->fd_idx == FDCOUNT_LIMIT)
+		goto error;
+
+	for (int i = 0; i < FDCOUNT_LIMIT; i++) {
+		struct file *file = parent->fd_table[i];
+		if (file == NULL)
+			continue;
+		struct file *new_file;
+		if (file > 2)
+			new_file = file_duplicate(file);
+		else
+			new_file = file;
+		current->fd_table[i] = new_file;
+	}
+	current->fd_idx = parent->fd_idx;
+
+	// child loaded successfully, wake up parent in process_fork
+	sema_up(&current->fork_sema);
 
 	/* Finally, switch to the newly created process. */
 	if (succ)
-		do_iret (&if_);
+		do_iret(&if_);
+
 error:
-	thread_exit ();
+	current->exit_status = TID_ERROR;
+	sema_up(&current->fork_sema);
+	exit(TID_ERROR);
 }
 
 /* Switch the current execution context to the f_name.
@@ -215,66 +280,13 @@ process_exec (void *f_name) {
 
 	// argument_stack(argc, argv, _if.rsp);
 
-	hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp, true);
+	// hex_dump(_if.rsp, _if.rsp, USER_STACK - _if.rsp, true);
 
+	palloc_free_page(file_name);
 	/* Start switched process. */
 	do_iret (&_if);
 	NOT_REACHED ();
 }
-
-
-
-// static void argument_stack(int argc_cnt, char **argv_list, void **stp){
-// 	int i;
-// 	char *argu_addr[128];
-// 	struct intr_frame *if_;
-
-	/* 프로그램 이름 및 인자(문자열) push */
-	/* 프로그램 이름 및 인자 주소들 push */
-	/* argv (문자열을 가리키는 주소들의 배열을 가리킴) push*/
-	/* argc (문자열의 개수 저장) push */
-	/* fake address(0) 저장 */
-
-
-// 	for(i = argc_cnt-1; i>-1; i--){
-// 		for(int j=strlen(argv_list[i]+1);j>-1;j--){
-			
-// 			*stp = *stp - 1;
-		
-		
-// 		argu_addr[i] = stp;
-
-// 		}
-// 	}
-
-// 	while ( *(int*)stp % 8 != 0 ){
-// 		stp--;
-// 		*stp = 0; 
-// 	}
-
-// 	for (i=argc_cnt; i>-1 ; i--){
-// 		*stp = *stp - 8;
-// 		if (i == argc_cnt){
-// 			*stp = 0; 
-// 		}
-// 		else{
-// 			*stp = &argu_addr[i];
-// 		}
-// 	}
-
-// 	*stp = *stp -8;
-// 	*stp = 0;
-
-// }
-
-
-// TODO: 유저 스택에 파싱된 토큰을 저장하는 함수 구현
-/* 
- * 유저 스택에 프로그램 이름과 인자들을 저장하는 함수
- * parse: 프로그램 이름과 인자가 저장되어 있는 메모리 공간,
- * count: 인자의 개수
- * esp: 스택 포인터를 가리키는 주소
-*/
 
 static void argument_stack(struct intr_frame *if_, int argv_cnt, char **argv_list) {
 	int i;
@@ -320,13 +332,37 @@ static void argument_stack(struct intr_frame *if_, int argv_cnt, char **argv_lis
  *
  * This function will be implemented in problem 2-2.  For now, it
  * does nothing. */
+
+// process_wait() 함수는 자식 프로세스가 모두 종료될 때까지 대기하고, 자식 프로세스가 올바르게 종료되었는지 확인 하는 기능
 int
-process_wait (tid_t child_tid UNUSED) {
+process_wait (tid_t child_tid) {
 	/* XXX: Hint) The pintos exit if process_wait (initd), we recommend you
 	 * XXX:       to add infinite loop here before
 	 * XXX:       implementing the process_wait. */
-	while(1){}
-	return -1;
+	
+	struct thread *child = get_child_with_pid(child_tid);
+
+	// [Fail] Not my child
+	if (child == NULL)
+		return -1;
+
+	// Parent waits until child signals (sema_up) after its execution
+	sema_down(&child->wait_sema); // 자식이 부모 재워
+	
+	/* 자식 수행 중 */
+	
+	/* 	
+	exit()에서 자식이 종료할때 자기 부모를 깨울거야 sema_up(curr->wait_sema) 
+	부모를 깨우고 자식은 sema_down(curr->free_sema) 함 -> 그럼 자식의 상태는 blocked가 될거임	
+	*/
+
+	int exit_status = child->exit_status;
+
+	// Keep child page so parent can get exit_status
+	list_remove(&child->child_elem); // 자식은 끝났으니까 다 지워줘
+	sema_up(&child->free_sema); // wake-up child in process_exit - proceed with thread_exit // 자식 재웠으니 자식 깨워줘야지
+	
+	return exit_status;	
 }
 
 /* Exit the process. This function is called by thread_exit (). */
@@ -338,7 +374,23 @@ process_exit (void) {
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
 
+	// P2-4 Close all opened files // 열린 파일 모두 닫기
+	for (int i = 0; i < FDCOUNT_LIMIT; i++) {
+		close(i);
+	}
+
+	palloc_free_multiple(curr->fd_table, FDT_PAGES); // multi-oom
+
+	file_close(curr->running); //for rox // 닫을때 다시 쓸 수 있게 활성화 시켜줌 
+
 	process_cleanup ();
+
+	// Wake up blocked parent
+	sema_up(&curr->wait_sema); // 부모 깨워줘
+
+	// Postpone child termination until parents receives its exit status with 'wait'
+	// 부모 프로세스가 sema_up(free_sema)할 때까지 기다림(block 상태 진입)
+	sema_down(&curr->free_sema); // 자식 잔다.
 }
 
 /* Free the current process's resources. */
@@ -464,6 +516,10 @@ load (const char *file_name, struct intr_frame *if_) {
 		goto done;
 	}
 
+	// project 2-5 deny writes to running exec
+	t->running = file; //
+	file_deny_write(file); // 열린 파일에 쓰기 방지함.
+
 	/* Read and verify executable header. */
 	if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
 			|| memcmp (ehdr.e_ident, "\177ELF\2\1\1", 7)
@@ -543,7 +599,7 @@ load (const char *file_name, struct intr_frame *if_) {
 
 done:
 	/* We arrive here whether the load is successful or not. */
-	file_close (file);
+	// file_close (file);
 	return success;
 }
 
