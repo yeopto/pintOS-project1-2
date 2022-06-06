@@ -136,16 +136,17 @@ void check_address(const uint64_t *uaddr)
 		exit(-1);
 	}
 }
+
 void halt(void) { // pintos 종료 시스템 콜
 	power_off();
 }
 
 void exit(int status) { // 프로세스를 종료시키는 시스템 콜
 	struct thread *cur = thread_current();
-	cur->exit_status = status; // 종료시 상태를 확인, 정상 종료면 state = 0 
+	cur->exit_status = status; 
 
-	printf("%s: exit(%d)\n", thread_name(), status); // 종료 메시지 출력
-	thread_exit(); // thread 종료
+	printf("%s: exit(%d)\n", thread_name(), status); // plj2 - process termination messages
+	thread_exit(); // thread 종료 -> process_exit() 실행
 }
 
 tid_t fork(const char *thread_name, struct intr_frame *f) {
@@ -155,7 +156,7 @@ tid_t fork(const char *thread_name, struct intr_frame *f) {
 int exec(char *file_name) { // 현재 프로세스를 커맨드라인에서 지정된 인수를 전달하여 이름이 지정된 실행 파일로 변경
 	check_address(file_name);
 
-	int file_size = strlen(file_name) + 1;
+	int file_size = strlen(file_name) + 1; // NULL 까지 + 1
 	char *fn_copy = palloc_get_page(PAL_ZERO);
 
 	if (fn_copy == NULL) {
@@ -285,32 +286,6 @@ int read(int fd, void *buffer, unsigned size) { // buffer는 읽은 데이터를
 
 // write() 함수는 열린 파일의 데이터를 기록하는 시스템 콜
 // buffer로부터 사이즈 쓰기
-// int write(int fd, const void *buffer, unsigned size) {
-// 	check_address(buffer);
-	
-// 	lock_acquire(&filesys_lock); // 쓸 때 동안은 락
-
-// 	int write_result;
-	
-// 	if (fd == 0) { // tests/userprog/write-stdin
-// 		return 0;
-// 	}
-// 	else if(fd == 1) { // fd 값 1은 표준 출력
-// 		putbuf(buffer, size);		// 문자열을 화면에 출력하는 함수
-// 		write_result = size;
-// 	}
-// 	else {
-// 		if (find_file_by_fd(fd) != NULL) {
-// 			write_result = file_write(find_file_by_fd(fd), buffer, size);
-// 		}
-// 		else {
-// 			write_result = 0;
-// 		}
-// 	}
-// 	lock_release(&filesys_lock);
-// 	return write_result;
-// }
-
 int write(int fd, const void *buffer, unsigned size)
 {
     check_address(buffer);

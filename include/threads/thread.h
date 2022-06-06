@@ -99,24 +99,25 @@ struct thread {
 	int priority;                       /* Priority. */
 	int origin_priority; //기부받기 전 priority
 	
+/* wakeup tick : 깨어나야 할 tick(시각) */
+	int64_t wakeup_tick;
+	
 	int exit_status; // project2 sys-call exit()위해
 	struct file **fd_table; // project2 sys-call exit()위해 -> thread_create에서 할당
 	int fd_idx; // fd테이블에 open spot의 인덱스
 
-	/* wakeup tick : 깨어나야 할 tick(시각) */
-	int64_t wakeup_tick;
-
 	// fork()
-	struct semaphore fork_sema;
 	struct list child_list;
 	struct list_elem child_elem;
 	struct intr_frame parent_if; // _fork() 구현 때 사용, __do_fork() 함수
+	struct semaphore fork_sema;
 	
 	// wait()
 	struct semaphore wait_sema;
 	struct semaphore free_sema;
-
-	struct file *running; // executable ran by current process (process.c load, process_exit)
+	
+	// 2-5
+	struct file *running; // 지금 실행중인 파일 (process.c load, process_exit)
 
 	/* Shared between thread.c and synch.c. */
 	/* donation */

@@ -176,7 +176,7 @@ __do_fork (void *aux) {
 	parent_if = &parent->parent_if;
 
 	/* 1. Read the cpu context to local stack. */
-	memcpy (&if_, parent_if, sizeof (struct intr_frame)); // 
+	memcpy (&if_, parent_if, sizeof (struct intr_frame)); // 부모의 if를 자식의 if로 복사
 	if_.R.rax = 0;
 
 	/* 2. Duplicate PT */
@@ -347,15 +347,21 @@ process_wait (tid_t child_tid) {
 		return -1;
 
 	// Parent waits until child signals (sema_up) after its execution
-	sema_down(&child->wait_sema);
+	sema_down(&child->wait_sema); // 자식이 부모 재워
+	
+	/* 자식 수행 중 */
+	
+	/* 	
+	exit()에서 자식이 종료할때 자기 부모를 깨울거야 sema_up(curr->wait_sema) 
+	부모를 깨우고 자식은 sema_down(curr->free_sema) 함 -> 그럼 자식의 상태는 blocked가 될거임	
+	*/
 
 	int exit_status = child->exit_status;
 
 	// Keep child page so parent can get exit_status
-	list_remove(&child->child_elem);
-	sema_up(&child->free_sema); // wake-up child in process_exit - proceed with thread_exit
+	list_remove(&child->child_elem); // 자식은 끝났으니까 다 지워줘
+	sema_up(&child->free_sema); // wake-up child in process_exit - proceed with thread_exit // 자식 재웠으니 자식 깨워줘야지
 	
-	// 부모 프로세스의 wait() 종료 -> 자식 프로세스의 process_exit() 종료
 	return exit_status;	
 }
 
@@ -368,23 +374,23 @@ process_exit (void) {
 	 * TODO: project2/process_termination.html).
 	 * TODO: We recommend you to implement process resource cleanup here. */
 
-	// P2-4 Close all opened files
+	// P2-4 Close all opened files // 열린 파일 모두 닫기
 	for (int i = 0; i < FDCOUNT_LIMIT; i++) {
 		close(i);
 	}
 
 	palloc_free_multiple(curr->fd_table, FDT_PAGES); // multi-oom
 
-	file_close(curr->running); //for rox
+	file_close(curr->running); //for rox // 닫을때 다시 쓸 수 있게 활성화 시켜줌 
 
 	process_cleanup ();
 
 	// Wake up blocked parent
-	sema_up(&curr->wait_sema);
+	sema_up(&curr->wait_sema); // 부모 깨워줘
 
 	// Postpone child termination until parents receives its exit status with 'wait'
 	// 부모 프로세스가 sema_up(free_sema)할 때까지 기다림(block 상태 진입)
-	sema_down(&curr->free_sema);
+	sema_down(&curr->free_sema); // 자식 잔다.
 }
 
 /* Free the current process's resources. */
@@ -510,9 +516,9 @@ load (const char *file_name, struct intr_frame *if_) {
 		goto done;
 	}
 
-	// project 2 - 5 deny writes to running exec
-	t->running = file;
-	file_deny_write(file);
+	// project 2-5 deny writes to running exec
+	t->running = file; //
+	file_deny_write(file); // 열린 파일에 쓰기 방지함.
 
 	/* Read and verify executable header. */
 	if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr

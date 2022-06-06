@@ -543,7 +543,7 @@ init_thread (struct thread *t, const char *name, int priority) {
     sema_init(&t->free_sema, 0);
     sema_init(&t->fork_sema, 0);
 
-    t->running = NULL;
+    t->running = NULL; // 2-5 deny write on excutable를 위해 running을 스레드 구조체에 선언해줬는데 init할때 NULL로 초기화해주고 load할때 할당됨.
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should
